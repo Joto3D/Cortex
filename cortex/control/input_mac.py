@@ -12,7 +12,9 @@ KEYCODES: dict[str, int] = {
     "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "=": 24, "9": 25, "7": 26,
     "-": 27, "8": 28, "0": 29, "o": 31, "u": 32, "i": 34, "p": 35, "l": 37, "j": 38,
     "k": 40, "n": 45, "m": 46,
-    "return": 36, "tab": 48, "space": 49, "delete": 51, "escape": 53, "shift": 56,
+    "return": 36, "enter": 36, "tab": 48, "space": 49, "delete": 51, "backspace": 51, "escape": 53, "esc": 53,
+    "shift": 56, "capslock": 57, "option": 58, "alt": 58, "ctrl": 59, "control": 59, "cmd": 55, "command": 55,
+    "rshift": 60, "ralt": 61, "rctrl": 62, "`": 50, "[": 33, "]": 30, ";": 41, "'": 39, ",": 43, ".": 47, "/": 44,
     "left": 123, "right": 124, "down": 125, "up": 126,
     "f1": 122, "f2": 120, "f3": 99, "f4": 118, "f5": 96, "f6": 97, "f7": 98, "f8": 100,
     "f9": 101, "f10": 109, "f11": 103, "f12": 111,
@@ -34,6 +36,15 @@ class MacInput:
     def mouse_move(self, x: float, y: float) -> None:
         Q = self.Q
         ev = Q.CGEventCreateMouseEvent(self._src, Q.kCGEventMouseMoved, (x, y), Q.kCGMouseButtonLeft)
+        Q.CGEventPost(Q.kCGHIDEventTap, ev)
+
+    def mouse_delta(self, dx: float, dy: float) -> None:
+        """Relative mouse movement, for 3D games that lock the cursor and read raw deltas."""
+        Q = self.Q
+        x, y = Q.CGEventGetLocation(Q.CGEventCreate(None))
+        ev = Q.CGEventCreateMouseEvent(self._src, Q.kCGEventMouseMoved, (x, y), Q.kCGMouseButtonLeft)
+        Q.CGEventSetIntegerValueField(ev, Q.kCGMouseEventDeltaX, int(round(dx)))
+        Q.CGEventSetIntegerValueField(ev, Q.kCGMouseEventDeltaY, int(round(dy)))
         Q.CGEventPost(Q.kCGHIDEventTap, ev)
 
     def mouse_button(self, x: float, y: float, button: str, down: bool) -> None:
