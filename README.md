@@ -68,6 +68,10 @@ Perception quality depends on the prompts. Workflow:
 2. Run `cortex.bench --image ...` on the saved frames and look at the label counts and the `--debug` overlay.
 3. Edit the prompts in the profile (several prompts per label are averaged together) and repeat.
 
+**Grid alignment** is detected automatically from where colour edges line up, and that works
+well for normal tilesets. If the overlay's tile boxes look offset from the real tiles
+(very noisy art, unusual zoom), set `game.grid_phase: [x, y]` in the profile to pin it.
+
 ## Project layout
 
 | Path | What it does |

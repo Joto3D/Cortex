@@ -58,21 +58,19 @@ class SemanticMap:
         return 0 <= r < R and 0 <= c < C
 
 
-def estimate_grid_phase(frame: np.ndarray, tile_px: int, row_stride: int = 4) -> tuple[int, int]:
+def estimate_grid_phase(frame: np.ndarray, tile_px: int, stride: int = 16) -> tuple[int, int]:
     """Estimate the (x, y) pixel offset of the tile grid.
 
     Neighbouring tiles usually differ, so strong colour edges pile up on tile
     boundaries. We sum absolute gradients along each axis, fold them modulo
-    ``tile_px``, and take the strongest bin. This is O(pixels / row_stride) in
-    numpy, about 1-3 ms at 1440p.
+    ``tile_px`` and take the strongest bin. Only every ``stride``-th row/column
+    of the green channel is sampled, which keeps this to well under 1 ms at 1440p.
     """
-    g = frame[::row_stride, :, :3].astype(np.int16).sum(axis=2)
-    gx = np.abs(np.diff(g, axis=1)).sum(axis=0)          # edge strength between x and x+1
-    gc = frame[:, ::row_stride, :3].astype(np.int16).sum(axis=2)
-    gy = np.abs(np.diff(gc, axis=0)).sum(axis=1)
-    px = _fold_argmax(gx, tile_px)
-    py = _fold_argmax(gy, tile_px)
-    return px, py
+    rows = frame[::stride, :, 1].astype(np.int16)
+    gx = np.abs(np.diff(rows, axis=1)).sum(axis=0)       # edge strength between x and x+1
+    cols = frame[:, ::stride, 1].astype(np.int16)
+    gy = np.abs(np.diff(cols, axis=0)).sum(axis=1)
+    return _fold_argmax(gx, tile_px), _fold_argmax(gy, tile_px)
 
 
 def _fold_argmax(profile: np.ndarray, period: int) -> int:
@@ -118,9 +116,9 @@ class TileGridPerceiver:
             phase = estimate_grid_phase(frame, self.tile_px)
         tiles, origin = slice_tiles(frame, self.tile_px, phase)
         R, C = tiles.shape[:2]
-        flat = tiles.reshape(R * C, self.tile_px, self.tile_px, 3)
         s = self.stride
-        keys = np.ascontiguousarray(flat[:, ::s, ::s])
+        # Only the small key samples are copied; tile pixels are copied for cache misses only.
+        keys = np.ascontiguousarray(tiles[:, :, ::s, ::s]).reshape(R * C, -1)
 
         labels = np.empty(R * C, np.int32)
         probs = np.empty(R * C, np.float32)
@@ -135,8 +133,8 @@ class TileGridPerceiver:
                 labels[i], probs[i] = hit
 
         if misses:
-            first = [idx[0] for idx in misses.values()]
-            batch = flat[first]
+            first = np.array([idx[0] for idx in misses.values()])
+            batch = tiles[first // C, first % C]
             li, lp = self.classifier.classify(batch)
             for (k, idxs), l, p in zip(misses.items(), li, lp):
                 val = (int(l) if p >= self.min_confidence else UNKNOWN, float(p))

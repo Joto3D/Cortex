@@ -4,9 +4,10 @@
 game:
   window_owner: "Stardew Valley"   # matched against the window's owning app name
   tile_px: 128                     # 16 game px * zoom 4 * Retina 2.  Use 64 on non-Retina.
+  # grid_phase: [0, 0]             # fixed (x, y) grid offset in pixels; omit to auto-detect each frame
 
 perception:
-  model: "MobileCLIP-S1"           # any open_clip model name
+  model: "MobileCLIP-S1"           # any open_clip model; "MobileCLIP2-S0" + "dfndr2b" is smaller/faster
   pretrained: "datacompdr"
   fallback_model: "ViT-B-32"       # used if the primary model can't be loaded
   fallback_pretrained: "laion2b_s34b_b79k"

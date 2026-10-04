@@ -50,6 +50,7 @@ class Profile:
     name: str
     window_owner: str
     tile_px: int
+    grid_phase: tuple[int, int] | None
     perception: dict[str, Any]
     labels: tuple[LabelSpec, ...]
     scenes: dict[str, tuple[str, ...]]
@@ -116,6 +117,7 @@ def profile_from_dict(raw: dict[str, Any], name: str = "custom") -> Profile:
         name=name,
         window_owner=game.get("window_owner", ""),
         tile_px=int(game.get("tile_px", 64)),
+        grid_phase=tuple(game["grid_phase"]) if game.get("grid_phase") else None,
         perception=dict(raw.get("perception", {})),
         labels=labels,
         scenes={k: tuple(v) for k, v in raw.get("scenes", {}).items()},

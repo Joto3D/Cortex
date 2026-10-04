@@ -44,7 +44,7 @@ class Perceiver:
         self._frame_no += 1
         t1 = time.perf_counter()
 
-        smap = self.tiles.perceive(frame)
+        smap = self.tiles.perceive(frame, self.profile.grid_phase)
         t2 = time.perf_counter()
 
         known = smap.labels >= 0

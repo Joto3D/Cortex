@@ -95,3 +95,11 @@ def test_bar_fill():
     frame[40:, 5:15] = (40, 220, 40)  # bottom 60% filled with green
     assert bar_fill(frame, (0.25, 0.0, 0.75, 1.0)) == pytest.approx(0.6, abs=0.02)
     assert bar_fill(np.zeros((100, 20, 3), np.uint8), (0, 0, 1, 1)) == 0.0
+
+
+def test_fixed_grid_phase_override(encoder):
+    raw = make_profile().raw
+    raw = raw | {"game": raw["game"] | {"grid_phase": [5, 11]}}
+    world = Perceiver(profile_from_dict(raw), encoder).perceive(render_grid(LAYOUT, phase=(5, 11)))
+    assert world.map.origin == (5, 11)
+    assert world.map.name_at(2, 2) == "player"
