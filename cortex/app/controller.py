@@ -8,7 +8,8 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import Callable
 
 from cortex.config import cortex_home, list_profiles, load_profile
@@ -16,23 +17,34 @@ from cortex.config import cortex_home, list_profiles, load_profile
 log = logging.getLogger(__name__)
 
 
+MAX_RECENT = 6
+
+
 @dataclass
 class Settings:
     game: str = "stardew"
     assignment: str = ""
+    recent: list[str] = field(default_factory=list)
+    setup_done: bool = False
 
     @classmethod
     def load(cls) -> "Settings":
         try:
             data = json.loads((cortex_home() / "settings.json").read_text())
-            return cls(game=str(data.get("game", cls.game)), assignment=str(data.get("assignment", "")))
-        except (OSError, ValueError):
+            return cls(
+                game=str(data.get("game", cls.game)),
+                assignment=str(data.get("assignment", "")),
+                recent=[str(r) for r in data.get("recent", [])][:MAX_RECENT],
+                setup_done=bool(data.get("setup_done", False)),
+            )
+        except (OSError, ValueError, TypeError):
             return cls()
 
     def save(self) -> None:
         path = cortex_home() / "settings.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"game": self.game, "assignment": self.assignment}, indent=2))
+        data = {"game": self.game, "assignment": self.assignment, "recent": self.recent, "setup_done": self.setup_done}
+        path.write_text(json.dumps(data, indent=2))
 
 
 def _default_run_grid(profile, assignment, stop, paused, on_status) -> str:
@@ -72,6 +84,7 @@ class AppController:
         self._thread: threading.Thread | None = None
         self.status = "Ready"
         self.last_result: str | None = None
+        self.started_at: float | None = None
 
     # -- choices --------------------------------------------------------------
     def games(self) -> list[str]:
@@ -85,8 +98,23 @@ class AppController:
         self.settings.save()
 
     def set_assignment(self, text: str) -> None:
-        self.settings.assignment = text.strip()
+        text = text.strip()
+        self.settings.assignment = text
+        if text:
+            self.settings.recent = [text] + [r for r in self.settings.recent if r != text][: MAX_RECENT - 1]
         self.settings.save()
+
+    def mark_setup_done(self) -> None:
+        self.settings.setup_done = True
+        self.settings.save()
+
+    @property
+    def elapsed(self) -> str:
+        """Running time as m:ss, or "" when idle."""
+        if not self.running or self.started_at is None:
+            return ""
+        s = int(time.monotonic() - self.started_at)
+        return f"{s // 60}:{s % 60:02d}"
 
     def example_assignments(self) -> list[str]:
         p = load_profile(self.settings.game)
@@ -106,6 +134,7 @@ class AppController:
         self.stop_event.clear()
         self.paused.clear()
         self.last_result = None
+        self.started_at = time.monotonic()
         self._thread = threading.Thread(target=self._work, args=(profile,), daemon=True, name="cortex-bot")
         self._thread.start()
 

@@ -103,3 +103,21 @@ def test_start_delay_can_be_cancelled():
 def test_unknown_saved_game_falls_back_to_stardew():
     ctl = AppController(Settings(game="deleted_game"))
     assert ctl.settings.game == "stardew"
+
+
+def test_recent_assignments_dedupe_and_cap():
+    ctl, _ = make()
+    for a in ["a", "b", "c", "a", "d", "e", "f", "g"]:
+        ctl.set_assignment(a)
+    assert ctl.settings.recent == ["g", "f", "e", "d", "a", "c"]
+    ctl.set_assignment("")
+    assert ctl.settings.recent[0] == "g"
+    assert Settings.load().recent == ctl.settings.recent
+
+
+def test_setup_done_persists_and_elapsed():
+    ctl, _ = make()
+    assert not Settings.load().setup_done
+    ctl.mark_setup_done()
+    assert Settings.load().setup_done
+    assert ctl.elapsed == ""
