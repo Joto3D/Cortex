@@ -50,12 +50,38 @@ tools:
   scythe: "5"
 
 # What to do with each target label. Earlier entries = higher priority.
+#   description: shown to Claude when it interprets an assignment
+#   keywords: used by the offline assignment parser (no API key needed)
 tasks:
-  - { name: harvest,     targets: [crop_ripe], action: interact }
-  - { name: water,       targets: [crop_dry],  action: tool, tool: watering_can }
-  - { name: clear_weeds, targets: [weed],      action: tool, tool: scythe }
-  - { name: clear_stone, targets: [stone],     action: tool, tool: pickaxe }
-  - { name: clear_twigs, targets: [twig],      action: tool, tool: axe }
+  - name: harvest
+    targets: [crop_ripe]
+    action: interact
+    description: Pick crops that are fully grown and ready to harvest.
+    keywords: [harvest, pick, collect, gather, reap, ripe]
+  - name: water
+    targets: [crop_dry]
+    action: tool
+    tool: watering_can
+    description: Water planted crops whose soil is still dry.
+    keywords: [water, watering, sprinkle, irrigate]
+  - name: clear_weeds
+    targets: [weed]
+    action: tool
+    tool: scythe
+    description: Cut down weeds with the scythe.
+    keywords: [weed, weeds, scythe, mow]
+  - name: clear_stone
+    targets: [stone]
+    action: tool
+    tool: pickaxe
+    description: Break small rocks and stones with the pickaxe.
+    keywords: [stone, stones, rock, rocks, pickaxe, mine]
+  - name: clear_twigs
+    targets: [twig]
+    action: tool
+    tool: axe
+    description: Chop fallen twigs and branches with the axe.
+    keywords: [twig, twigs, branch, branches, stick, sticks, wood, chop]
 
 controls:
   up: "w"

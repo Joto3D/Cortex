@@ -1,5 +1,6 @@
 import numpy as np
 
+from cortex.assignment import Mission, Step
 from cortex.perception.tilegrid import SemanticMap
 from cortex.planner.actions import Done, Interact, Move, Stop, UseTool, Wait
 from cortex.planner.farm_planner import FarmPlanner
@@ -105,7 +106,7 @@ def test_routes_around_stone(profile):
 
 
 def test_gives_up_on_a_tile_after_max_attempts(profile):
-    planner = FarmPlanner(profile)
+    planner = FarmPlanner(profile, empty_frames_to_finish=1)
     w = world_from(["@d"])
     t = 0.0
     for _ in range(profile.controls.max_attempts_per_tile):
@@ -115,14 +116,14 @@ def test_gives_up_on_a_tile_after_max_attempts(profile):
 
 
 def test_halts_on_menus_low_energy_and_no_work(profile):
-    planner = FarmPlanner(profile)
+    planner = FarmPlanner(profile, empty_frames_to_finish=1)
     assert isinstance(planner.step(world_from(["@d"], scene="dialog"), now=0), Wait)
     assert isinstance(planner.step(world_from(["@d"], energy=0.05), now=0), Done)
     assert planner.step(world_from(["@ww"]), now=0) == Done("no reachable work on screen")
 
 
 def test_unreachable_target_is_skipped(profile):
-    planner = FarmPlanner(profile)
+    planner = FarmPlanner(profile, empty_frames_to_finish=1)
     w = world_from(
         [
             "@.#..",
@@ -131,3 +132,39 @@ def test_unreachable_target_is_skipped(profile):
         ]
     )
     assert isinstance(planner.step(w, now=0), Done)
+
+
+def test_waits_a_few_frames_before_deciding_there_is_no_work(profile):
+    planner = FarmPlanner(profile, empty_frames_to_finish=3)
+    w = world_from(["@ww"])
+    assert isinstance(planner.step(w, now=0), Wait)
+    assert isinstance(planner.step(w, now=0), Wait)
+    assert isinstance(planner.step(w, now=0), Done)
+
+
+def test_mission_runs_steps_in_order_ignoring_other_tasks(profile):
+    # Watering is asked for first, so the bot waters even though harvesting has higher default priority.
+    mission = Mission("water then harvest", (Step("water"), Step("harvest")))
+    planner = FarmPlanner(profile, mission, empty_frames_to_finish=1)
+    w = world_from(["d@r"])
+    a = planner.step(w, now=0)
+    assert isinstance(a, UseTool) and a.tile == (0, 0)
+    assert planner.current_step.startswith("step 1/2")
+
+    # The crop is watered, so step 1 runs out of targets and step 2 starts on the same frame.
+    w = world_from(["w@r"])
+    a = planner.step(w, now=10)
+    assert isinstance(a, Interact) and a.tile == (0, 2)
+    assert planner.current_step.startswith("step 2/2")
+
+    assert planner.step(world_from(["w@w"]), now=20) == Done("assignment complete")
+
+
+def test_mission_step_limit(profile):
+    mission = Mission("clear 2 weeds", (Step("weeds", limit=2),))
+    planner = FarmPlanner(profile, mission, empty_frames_to_finish=1)
+    w = world_from(["x@x", "xxx"])
+    assert isinstance(planner.step(w, now=0), UseTool)
+    assert planner.current_step.endswith("1/2")
+    assert isinstance(planner.step(w, now=10), UseTool)
+    assert planner.step(w, now=20) == Done("assignment complete")

@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 clip = ["torch>=2.2", "open_clip_torch>=2.26"]
+ai = ["anthropic>=1.0"]
 mac = [
     "pyobjc-framework-Quartz>=10.0",
     "pyobjc-framework-Cocoa>=10.0",
@@ -25,7 +26,7 @@ mac = [
 ]
 debug = ["opencv-python>=4.8"]
 dev = ["pytest>=8.0"]
-all = ["cortex[clip,mac,debug,dev]"]
+all = ["cortex[clip,ai,mac,debug,dev]"]
 
 [tool.setuptools.packages.find]
 include = ["cortex*"]

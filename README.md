@@ -9,6 +9,33 @@ Stardew Valley on macOS (Apple Silicon) is the reference target.
 > **Use it only in single-player or offline games.** Botting in online games usually
 > breaks their Terms of Service and can get your account banned.
 
+**Website:** https://joto3d.github.io/Cortex/ (try the assignment demo in your browser)
+
+## Give it an assignment
+
+Tell Cortex what to do in plain English:
+
+```bash
+python -m cortex.loop -a "harvest everything, then water the crops and break 5 rocks"
+```
+
+```
+Plan: Harvest the ripe crops, water the dry ones, then break 5 rocks.
+  1. harvest (until done)
+  2. water (until done)
+  3. clear_stone x5
+Start? Switch to the game window after pressing Enter. [Y/n]
+```
+
+- Run it with no `-a` and it asks you what to do. Press Enter with nothing typed to do every chore.
+- **Claude** (`claude-opus-5-5`) reads the assignment *once, before the game starts*, and returns
+  a plan restricted to the tasks your profile defines. Anything it can't do (like "feed the chickens")
+  is listed instead of guessed. Set `ANTHROPIC_API_KEY` (or run `ant auth login`) to enable it.
+- With no credentials or no network, it falls back automatically to an **offline keyword parser**
+  (each task's `keywords:` in the profile). Use `--offline` to force it.
+- Steps run in order. A step ends when its count is reached, or when its targets have been gone
+  from the screen for a few frames. Preview a plan without the game: `python -m cortex.assignment "..."`.
+
 ## How it works
 
 ```
@@ -82,10 +109,19 @@ well for normal tilesets. If the overlay's tile boxes look offset from the real 
 | `cortex/perception/tilegrid.py` | Grid phase estimation, tile slicing, hash cache → `SemanticMap` |
 | `cortex/perception/hud.py` | Energy bar reader (pixel colours, no network) |
 | `cortex/perception/perceiver.py` | Frame → `WorldState` |
-| `cortex/planner/` | Pathing (BFS), actions, farm task planner |
+| `cortex/assignment.py` | Plain-English assignment → Mission (Claude, with a keyword fallback) |
+| `cortex/planner/` | Pathing (BFS), actions, farm task planner (runs missions step by step) |
 | `cortex/control/` | Quartz CGEvent input and the action → input controller |
 | `cortex/loop.py` | Main loop, hotkeys, dry-run and recording |
-| `cortex/profiles/stardew.yaml` | Labels/prompts, tools, tasks, controls, HUD for Stardew |
+| `cortex/profiles/stardew.yaml` | Labels/prompts, tools, tasks (with descriptions and keywords), controls, HUD for Stardew |
+| `docs/` | GitHub Pages website (`index.html`, the JS parser port `assign.mjs`, generated `tasks.json`) |
+
+## Website
+
+`docs/` is deployed to GitHub Pages by `.github/workflows/pages.yml` on every push to `main`
+that touches `docs/`. Before the first deploy, enable it once in the repo's
+**Settings → Pages → Source: GitHub Actions**. If you change tasks in the profile, run
+`python scripts/export_site_data.py`; a test fails if `docs/tasks.json` is stale.
 
 ## Tests
 
@@ -104,5 +140,4 @@ torch, no macOS) and cover grid detection, caching, pathing, planning and input.
   keeping CLIP as the teacher for new labels.
 - **ScreenCaptureKit** streaming capture backend.
 - Exploring beyond the visible screen, going to bed at night, refilling the watering can.
-- An optional Claude call *once per in-game day* (outside the hot loop) to set high-level goals.
 - More game profiles.

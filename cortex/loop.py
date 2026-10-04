@@ -1,7 +1,8 @@
 """Main loop: capture → perceive → plan → act, at a fixed rate.
 
-    python -m cortex.loop --profile stardew --debug
-    python -m cortex.loop --dry-run      # perceive and plan, but send no input
+    python -m cortex.loop                                  # asks what you want done
+    python -m cortex.loop -a "harvest, then water the crops" --debug
+    python -m cortex.loop --dry-run                        # perceive and plan, but send no input
 
 F12 stops the bot and F11 toggles pause (both configurable in the profile).
 """
@@ -9,10 +10,12 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 import threading
 import time
 from pathlib import Path
 
+from cortex.assignment import DEFAULT_MODEL, Mission, interpret
 from cortex.config import Profile, load_profile
 from cortex.planner.actions import Done, Wait
 from cortex.planner.farm_planner import FarmPlanner
@@ -57,7 +60,13 @@ def build_encoder(profile: Profile):
     return ClipEncoder(p.get("model", "MobileCLIP-S1"), p.get("pretrained", "datacompdr"), fallback=fb)
 
 
-def run(profile: Profile, debug: bool = False, dry_run: bool = False, record: Path | None = None) -> str:
+def run(
+    profile: Profile,
+    mission: Mission | None = None,
+    debug: bool = False,
+    dry_run: bool = False,
+    record: Path | None = None,
+) -> str:
     from cortex.capture.screen import WindowCapture
     from cortex.control.controller import Controller
     from cortex.control.input_mac import MacInput, frontmost_app_name
@@ -65,7 +74,7 @@ def run(profile: Profile, debug: bool = False, dry_run: bool = False, record: Pa
 
     cap = WindowCapture(profile.window_owner)
     perceiver = Perceiver(profile, build_encoder(profile))
-    planner = FarmPlanner(profile)
+    planner = FarmPlanner(profile, mission)
     backend = _NullInput() if dry_run else MacInput()
     ctl = Controller(profile, backend, to_screen=cap.to_screen)
     keys = Hotkeys(profile.controls.kill_switch, profile.controls.pause)
@@ -103,7 +112,7 @@ def run(profile: Profile, debug: bool = False, dry_run: bool = False, record: Pa
             if debug:
                 status = (
                     f"cap {1e3*(t1-t0):.0f}ms  perc {1e3*(t2-t1):.0f}ms  act {1e3*(t3-t2):.0f}ms  "
-                    f"energy {world.energy:.0%}  {world.scene}  {type(action).__name__}"
+                    f"energy {world.energy:.0%}  {world.scene}  {planner.current_step}  {type(action).__name__}"
                 )
                 from cortex.overlay.debug import show
 
@@ -112,6 +121,8 @@ def run(profile: Profile, debug: bool = False, dry_run: bool = False, record: Pa
             if isinstance(action, Done):
                 reason = action.reason
                 break
+            if frame_no % 40 == 0:
+                log.info("%s", planner.current_step)
             frame_no += 1
             time.sleep(max(0.0, period - (time.perf_counter() - t0)))
     except KeyboardInterrupt:
@@ -135,6 +146,10 @@ class _NullInput:
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="Cortex farming bot")
+    ap.add_argument("-a", "--assignment", help='what to do, in plain English, e.g. "harvest, then water the crops"')
+    ap.add_argument("--offline", action="store_true", help="understand the assignment with keywords only (no Claude)")
+    ap.add_argument("--model", default=DEFAULT_MODEL, help="Claude model used to understand the assignment")
+    ap.add_argument("-y", "--yes", action="store_true", help="start without confirming the plan")
     ap.add_argument("--profile", default="stardew", help="bundled profile name or path to a YAML file")
     ap.add_argument("--debug", action="store_true", help="show the perception overlay window")
     ap.add_argument("--dry-run", action="store_true", help="don't send any input")
@@ -142,7 +157,22 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    run(load_profile(a.profile), debug=a.debug, dry_run=a.dry_run, record=a.record)
+    profile = load_profile(a.profile)
+
+    text = a.assignment
+    if text is None and sys.stdin.isatty():
+        text = input("What should I do? (press Enter for all chores) > ")
+    mission = interpret(text or "", profile, "offline" if a.offline else "auto", a.model)
+    print(mission.describe())
+    if not mission.steps:
+        print("I couldn't find anything I know how to do in that assignment.")
+        sys.exit(1)
+    if not a.yes and sys.stdin.isatty():
+        if input("Start? Switch to the game window after pressing Enter. [Y/n] ").strip().lower() in ("n", "no"):
+            return
+        time.sleep(3)  # time to focus the game window
+
+    run(profile, mission, debug=a.debug, dry_run=a.dry_run, record=a.record)
 
 
 if __name__ == "__main__":

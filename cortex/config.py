@@ -28,6 +28,8 @@ class TaskSpec:
     targets: tuple[str, ...]
     action: str  # "tool" | "interact"
     tool: str | None = None
+    description: str = ""
+    keywords: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,12 @@ class Profile:
     def label_names(self) -> list[str]:
         return [l.name for l in self.labels]
 
+    def task(self, name: str) -> TaskSpec:
+        for t in self.tasks:
+            if t.name == name:
+                return t
+        raise KeyError(name)
+
     @property
     def walkable_labels(self) -> frozenset[str]:
         return frozenset(l.name for l in self.labels if l.walkable)
@@ -97,6 +105,8 @@ def profile_from_dict(raw: dict[str, Any], name: str = "custom") -> Profile:
             targets=tuple(t["targets"]),
             action=t["action"],
             tool=t.get("tool"),
+            description=t.get("description", ""),
+            keywords=tuple(k.lower() for k in t.get("keywords", ())),
         )
         unknown = set(spec.targets) - label_names
         if unknown:
