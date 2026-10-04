@@ -1,0 +1,73 @@
+{
+  "profile": "stardew",
+  "tasks": [
+    {
+      "name": "harvest",
+      "description": "Pick crops that are fully grown and ready to harvest.",
+      "keywords": [
+        "harvest",
+        "pick",
+        "collect",
+        "gather",
+        "reap",
+        "ripe"
+      ],
+      "tool": null,
+      "action": "interact"
+    },
+    {
+      "name": "water",
+      "description": "Water planted crops whose soil is still dry.",
+      "keywords": [
+        "water",
+        "watering",
+        "sprinkle",
+        "irrigate"
+      ],
+      "tool": "watering_can",
+      "action": "tool"
+    },
+    {
+      "name": "clear_weeds",
+      "description": "Cut down weeds with the scythe.",
+      "keywords": [
+        "weed",
+        "weeds",
+        "scythe",
+        "mow"
+      ],
+      "tool": "scythe",
+      "action": "tool"
+    },
+    {
+      "name": "clear_stone",
+      "description": "Break small rocks and stones with the pickaxe.",
+      "keywords": [
+        "stone",
+        "stones",
+        "rock",
+        "rocks",
+        "pickaxe",
+        "mine"
+      ],
+      "tool": "pickaxe",
+      "action": "tool"
+    },
+    {
+      "name": "clear_twigs",
+      "description": "Chop fallen twigs and branches with the axe.",
+      "keywords": [
+        "twig",
+        "twigs",
+        "branch",
+        "branches",
+        "stick",
+        "sticks",
+        "wood",
+        "chop"
+      ],
+      "tool": "axe",
+      "action": "tool"
+    }
+  ]
+}

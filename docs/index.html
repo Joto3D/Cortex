@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cortex Farming Bot</title>
+<meta name="description" content="Tell Cortex what to do on your farm in plain English. It watches the screen with a CLIP vision model and plays the game for you.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232f6b3a'/><path d='M16 25V13M16 17c-4 0-7-3-7-7 4 0 7 3 7 7zm0-2c0-4 3-7 7-7 0 4-3 7-7 7z' stroke='%23e9f5d0' stroke-width='2.2' fill='none' stroke-linecap='round'/></svg>">
+<style>
+  :root {
+    --bg: #fbf8f1;
+    --surface: #ffffff;
+    --surface-2: #f2ede1;
+    --text: #1f2a1f;
+    --muted: #5d6b5b;
+    --border: #e1dacb;
+    --accent: #2f6b3a;
+    --accent-ink: #ffffff;
+    --accent-soft: #e3efd9;
+    --soil: #8a5a2b;
+    --warn-bg: #fff4dc;
+    --warn-border: #e8c77a;
+    --code-bg: #1d241d;
+    --code-text: #e6efe0;
+    --shadow: 0 1px 2px rgba(40, 35, 20, .06), 0 8px 24px rgba(40, 35, 20, .06);
+    --radius: 14px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121612;
+      --surface: #1a201a;
+      --surface-2: #222a22;
+      --text: #e8eee4;
+      --muted: #a2b09e;
+      --border: #303a2f;
+      --accent: #7cc48a;
+      --accent-ink: #0f1a10;
+      --accent-soft: #233626;
+      --soil: #d39a5f;
+      --warn-bg: #2c2516;
+      --warn-border: #6b5526;
+      --code-bg: #0c100c;
+      --code-text: #dfe9d9;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121612; --surface: #1a201a; --surface-2: #222a22; --text: #e8eee4; --muted: #a2b09e;
+    --border: #303a2f; --accent: #7cc48a; --accent-ink: #0f1a10; --accent-soft: #233626; --soil: #d39a5f;
+    --warn-bg: #2c2516; --warn-border: #6b5526; --code-bg: #0c100c; --code-text: #dfe9d9;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25); color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+  section { padding: 56px 0; }
+  h1, h2, h3 { line-height: 1.2; margin: 0 0 12px; }
+  h2 { font-size: clamp(1.5rem, 3vw, 2rem); }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+
+  /* nav */
+  nav { border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; }
+  nav .wrap { display: flex; align-items: center; gap: 16px; height: 56px; }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text); text-decoration: none; }
+  .brand svg { width: 26px; height: 26px; }
+  nav .links { margin-left: auto; display: flex; gap: 16px; font-size: .95rem; }
+  nav .links a { color: var(--muted); text-decoration: none; }
+  nav .links a:hover { color: var(--text); }
+  @media (max-width: 560px) { nav .links .hide-sm { display: none; } }
+
+  /* hero */
+  .hero { padding: 64px 0 40px; }
+  .hero h1 { font-size: clamp(2rem, 6vw, 3.4rem); letter-spacing: -.02em; max-width: 14ch; }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p.lead { font-size: 1.15rem; color: var(--muted); max-width: 58ch; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px;
+    font-weight: 600; text-decoration: none; border: 1px solid var(--border); color: var(--text); background: var(--surface);
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn:focus-visible, button:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  /* demo */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .demo { display: grid; grid-template-columns: 1fr 1fr; gap: 0; overflow: hidden; }
+  @media (max-width: 800px) { .demo { grid-template-columns: 1fr; } }
+  .demo > div { padding: 24px; min-width: 0; }
+  .demo .out { background: var(--surface-2); border-left: 1px solid var(--border); }
+  @media (max-width: 800px) { .demo .out { border-left: 0; border-top: 1px solid var(--border); } }
+  label.lbl { display: block; font-weight: 600; margin-bottom: 8px; }
+  textarea {
+    width: 100%; min-height: 96px; resize: vertical; padding: 12px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip {
+    font: inherit; font-size: .85rem; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text); text-align: left;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .steps { list-style: none; padding: 0; margin: 0; counter-reset: s; }
+  .steps li {
+    counter-increment: s; display: grid; grid-template-columns: 32px 1fr; gap: 12px; align-items: start;
+    padding: 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 8px;
+  }
+  .steps li::before {
+    content: counter(s); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: .9rem;
+  }
+  .steps .t { font-weight: 650; }
+  .steps .d { font-size: .9rem; color: var(--muted); }
+  .badge { display: inline-block; font-size: .75rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; vertical-align: 1px; }
+  .note { font-size: .9rem; padding: 10px 12px; border-radius: 10px; background: var(--warn-bg); border: 1px solid var(--warn-border); margin-top: 8px; }
+  .empty { color: var(--muted); font-size: .95rem; }
+  .out h3 { font-size: 1rem; }
+  .out .cmd { margin-top: 16px; }
+  #cmd { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  /* pipeline */
+  .pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 24px; }
+  @media (max-width: 800px) { .pipeline { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 420px) { .pipeline { grid-template-columns: 1fr; } }
+  .stage { padding: 20px; position: relative; }
+  .stage .num { font-size: .8rem; font-weight: 700; color: var(--soil); letter-spacing: .06em; text-transform: uppercase; }
+  .stage h3 { font-size: 1.1rem; margin: 6px 0 8px; }
+  .stage p { font-size: .93rem; color: var(--muted); margin: 0; }
+  .stage .time { display: inline-block; margin-top: 12px; font-size: .8rem; font-weight: 600; color: var(--accent); }
+
+  /* features */
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 24px; }
+  @media (max-width: 800px) { .grid3 { grid-template-columns: 1fr; } }
+  .feature { padding: 20px; }
+  .feature h3 { font-size: 1.05rem; }
+  .feature p { font-size: .95rem; color: var(--muted); margin: 0; }
+
+  pre {
+    background: var(--code-bg); color: var(--code-text); padding: 16px; border-radius: 12px;
+    overflow-x: auto; line-height: 1.55; margin: 0;
+  }
+  pre .c { color: #8fa58a; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 800px) { .two { grid-template-columns: 1fr; } }
+  ol.plain { padding-left: 20px; margin: 0; }
+  ol.plain li { margin-bottom: 8px; }
+
+  .warn { padding: 20px; background: var(--warn-bg); border-color: var(--warn-border); }
+  footer { border-top: 1px solid var(--border); padding: 24px 0 40px; color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Cortex home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M16 25V13M16 17c-4 0-7-3-7-7 4 0 7 3 7 7zm0-2c0-4 3-7 7-7 0 4-3 7-7 7z" stroke="var(--accent-ink)" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>
+      Cortex
+    </a>
+    <div class="links">
+      <a href="#try">Try it</a>
+      <a href="#how" class="hide-sm">How it works</a>
+      <a href="#start">Get started</a>
+      <a href="https://github.com/Joto3D/Cortex">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<main id="top">
+  <header class="hero">
+    <div class="wrap">
+      <h1>Tell it the chores. <em>It plays the farm.</em></h1>
+      <p class="lead">Cortex is a bot for single-player farming games like Stardew Valley. You type an assignment in plain
+        English, such as <q>harvest everything, then water the crops</q>. It works out a plan, watches the screen with a CLIP
+        vision model and plays with human-like keyboard and mouse input.</p>
+      <div class="cta">
+        <a class="btn primary" href="#try">Try an assignment</a>
+        <a class="btn" href="https://github.com/Joto3D/Cortex">View the code</a>
+      </div>
+    </div>
+  </header>
+
+  <section id="try" aria-labelledby="try-h">
+    <div class="wrap">
+      <h2 id="try-h">Give it an assignment</h2>
+      <p class="muted">Type what you want done and see the plan Cortex would follow. The demo below uses Cortex's offline
+        keyword parser. The app itself sends your words to Claude first, so it understands much looser phrasing.</p>
+      <div class="card demo">
+        <div>
+          <label class="lbl" for="assignment">What should Cortex do?</label>
+          <textarea id="assignment" spellcheck="false">Harvest everything, then water the crops and break 5 rocks</textarea>
+          <div class="chips" role="group" aria-label="Example assignments">
+            <button class="chip" type="button">Water my plants first, then pick the ripe ones</button>
+            <button class="chip" type="button">Do all the chores</button>
+            <button class="chip" type="button">Chop twelve sticks then mow the weeds</button>
+            <button class="chip" type="button">Clear the rocks and feed the chickens</button>
+          </div>
+        </div>
+        <div class="out" aria-live="polite">
+          <h3>Plan</h3>
+          <div id="plan"><p class="empty">Loading tasks…</p></div>
+          <div class="cmd">
+            <h3>Run it</h3>
+            <pre id="cmd"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" aria-labelledby="how-h">
+    <div class="wrap">
+      <h2 id="how-h">How it works</h2>
+      <p class="muted">Claude only reads your assignment, once, before the game starts. Everything after that runs in a fast
+        local loop, so the bot reacts like a person at the keyboard.</p>
+      <div class="pipeline">
+        <div class="card stage">
+          <div class="num">1 · Capture</div>
+          <h3>Watch the game</h3>
+          <p>Grabs the game window many times a second using macOS screen capture.</p>
+          <span class="time">~8 ms</span>
+        </div>
+        <div class="card stage">
+          <div class="num">2 · Perceive</div>
+          <h3>Understand the screen</h3>
+          <p>Cuts the screen into tiles and labels each one by comparing it with descriptions like
+            <q>a sprout on dry soil</q> using MobileCLIP. Tiles it has already seen are remembered.</p>
+          <span class="time">~2 ms once the cache is warm</span>
+        </div>
+        <div class="card stage">
+          <div class="num">3 · Plan</div>
+          <h3>Pick the next job</h3>
+          <p>Follows your assignment step by step, then finds the shortest walk to the nearest crop, weed or rock.</p>
+          <span class="time">&lt;1 ms</span>
+        </div>
+        <div class="card stage">
+          <div class="num">4 · Act</div>
+          <h3>Play like a human</h3>
+          <p>Holds movement keys, picks the right tool and clicks the tile, with small random timing so input looks natural.</p>
+          <span class="time">~1 ms</span>
+        </div>
+      </div>
+
+      <div class="grid3">
+        <div class="card feature">
+          <h3>No training data</h3>
+          <p>To teach Cortex something new, you add a sentence to the game profile. CLIP matches images to text without any training.</p>
+        </div>
+        <div class="card feature">
+          <h3>Understands what you mean</h3>
+          <p>Claude turns <q>smash three rocks then water</q> into exact steps, and tells you which parts it can't do. Without an API key it uses keyword matching.</p>
+        </div>
+        <div class="card feature">
+          <h3>Always under your control</h3>
+          <p>F12 stops the bot and F11 pauses it. It also pauses when you switch windows, and stops when energy runs low or the job is done.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="start" aria-labelledby="start-h">
+    <div class="wrap two">
+      <div>
+        <h2 id="start-h">Get started on macOS</h2>
+        <ol class="plain">
+          <li>Install with Python 3.10 or later on an Apple Silicon Mac.</li>
+          <li>In <b>System Settings → Privacy &amp; Security</b>, allow your terminal <b>Screen Recording</b>,
+            <b>Accessibility</b> and <b>Input Monitoring</b>.</li>
+          <li>Optional: set <code>ANTHROPIC_API_KEY</code> so Claude can read your assignments.</li>
+          <li>Open your farm in Stardew at 100% zoom. Then run Cortex and type an assignment.</li>
+        </ol>
+      </div>
+      <pre><span class="c"># install</span>
+git clone https://github.com/Joto3D/Cortex
+cd Cortex
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -e ".[all]"
+
+<span class="c"># preview a plan without playing</span>
+python -m cortex.assignment "water then harvest"
+
+<span class="c"># watch first (no input sent), then play</span>
+python -m cortex.loop --debug --dry-run
+python -m cortex.loop -a "harvest, then water"</pre>
+    </div>
+  </section>
+
+  <section aria-labelledby="fair-h">
+    <div class="wrap">
+      <div class="card warn">
+        <h2 id="fair-h" style="font-size:1.2rem">Single-player only</h2>
+        <p style="margin:0">Use Cortex only in single-player or offline games. Botting in online games usually breaks their
+          Terms of Service and can get your account banned.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">Cortex is open source under the MIT License · <a href="https://github.com/Joto3D/Cortex">github.com/Joto3D/Cortex</a></div>
+</footer>
+
+<script type="module">
+  import { interpret } from "./assign.mjs";
+
+  const input = document.getElementById("assignment");
+  const plan = document.getElementById("plan");
+  const cmd = document.getElementById("cmd");
+  let tasks = [];
+
+  const title = (name) => name.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+  const el = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+
+  function render() {
+    const text = input.value;
+    cmd.textContent = `python -m cortex.loop -a "${text.replace(/"/g, '\\"')}"`;
+    plan.replaceChildren();
+    if (!text.trim()) {
+      plan.append(el("p", "empty", "With no assignment, Cortex does every chore, highest priority first."));
+      return;
+    }
+    const { steps, unsupported } = interpret(text, tasks);
+    if (steps.length) {
+      const ol = el("ol", "steps");
+      for (const s of steps) {
+        const t = tasks.find((x) => x.name === s.task);
+        const li = el("li");
+        const body = el("div");
+        const head = el("div", "t", title(s.task));
+        head.append(el("span", "badge", s.limit ? `× ${s.limit}` : "until done"));
+        body.append(head, el("div", "d", t.description + (t.tool ? ` Uses the ${t.tool.replace(/_/g, " ")}.` : "")));
+        li.append(body);
+        ol.append(li);
+      }
+      plan.append(ol);
+    } else {
+      plan.append(el("p", "empty", "I didn't find a chore I know how to do in that."));
+    }
+    for (const u of unsupported) plan.append(el("div", "note", `Can't do yet: “${u}”`));
+  }
+
+  document.querySelectorAll(".chip").forEach((b) =>
+    b.addEventListener("click", () => { input.value = b.textContent; render(); input.focus(); })
+  );
+  input.addEventListener("input", render);
+
+  try {
+    tasks = (await (await fetch("tasks.json")).json()).tasks;
+    render();
+  } catch (e) {
+    plan.replaceChildren(el("p", "empty", "Couldn't load the task list. Open this page from a web server, not as a file."));
+  }
+</script>
+</body>
+</html>
