@@ -4,7 +4,7 @@
 # Output: dist/Cortex.app
 import os
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules, copy_metadata
 
 import cortex
 
@@ -17,6 +17,10 @@ for dist in ("torch", "open_clip_torch", "anthropic", "huggingface_hub", "safete
     except Exception:
         pass
 
+# torchvision loads its compiled ops (_C*.so) with torch.ops.load_library, which PyInstaller
+# can't see; without them `import open_clip` fails with "operator torchvision::nms does not exist".
+binaries = collect_dynamic_libs("torchvision", search_patterns=["*.so", "*.dylib"])
+
 hiddenimports = (
     collect_submodules("cortex")
     + collect_submodules("keyring.backends")
@@ -26,6 +30,7 @@ hiddenimports = (
 a = Analysis(
     [os.path.join(HERE, "cortex_app.py")],
     pathex=[os.path.dirname(HERE)],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     excludes=["tkinter", "matplotlib", "IPython", "pytest"],
