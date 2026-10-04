@@ -1,0 +1,79 @@
+# Game profile for Stardew Valley (macOS native build).
+# Pixel values are in *captured image* pixels (Retina = physical pixels).
+
+game:
+  window_owner: "Stardew Valley"   # matched against the window's owning app name
+  tile_px: 128                     # 16 game px * zoom 4 * Retina 2.  Use 64 on non-Retina.
+
+perception:
+  model: "MobileCLIP-S1"           # any open_clip model name
+  pretrained: "datacompdr"
+  fallback_model: "ViT-B-32"       # used if the primary model can't be loaded
+  fallback_pretrained: "laion2b_s34b_b79k"
+  prompt_template: "a pixel art video game tile showing {}"
+  scene_every_n_frames: 10         # how often to run the full-frame scene check
+  cache_size: 50000                # tile-hash -> label cache entries
+  min_confidence: 0.0              # tiles below this softmax prob become "unknown"
+
+# Each label: prompts are averaged into one text embedding.
+#   walkable: can the player stand here?
+labels:
+  grass:        { walkable: true,  prompts: ["green grass ground", "a grassy field"] }
+  path:         { walkable: true,  prompts: ["a dirt path", "a stone floor path"] }
+  tilled_dry:   { walkable: true,  prompts: ["light brown dry tilled soil", "empty dry farmland"] }
+  tilled_wet:   { walkable: true,  prompts: ["dark brown wet tilled soil", "empty watered farmland"] }
+  crop_dry:     { walkable: true,  prompts: ["a small green sprout on light dry soil", "a young crop on dry farmland"] }
+  crop_wet:     { walkable: true,  prompts: ["a small green sprout on dark wet soil", "a young crop on watered farmland"] }
+  crop_ripe:    { walkable: true,  prompts: ["a ripe vegetable ready to harvest", "a fully grown crop with produce"] }
+  weed:         { walkable: false, prompts: ["a leafy green weed", "a small wild bush weed"] }
+  stone:        { walkable: false, prompts: ["a small grey rock", "a stone on the ground"] }
+  twig:         { walkable: false, prompts: ["a brown wooden twig", "a fallen branch"] }
+  tree:         { walkable: false, prompts: ["a tree trunk", "a tree"] }
+  water:        { walkable: false, prompts: ["blue water", "a pond"] }
+  structure:    { walkable: false, prompts: ["a wooden fence", "a building wall", "a roof"] }
+  player:       { walkable: true,  prompts: ["a pixel art farmer character", "a person"] }
+
+# Full-frame classification to detect when the bot must not act.
+scenes:
+  world:  ["a top down farm video game world"]
+  dialog: ["a video game dialog box with text"]
+  menu:   ["a video game inventory menu screen"]
+  dark:   ["a black loading screen"]
+
+# Hotbar slot keys for each tool (set these to match your own toolbar).
+tools:
+  hoe: "1"
+  watering_can: "2"
+  axe: "3"
+  pickaxe: "4"
+  scythe: "5"
+
+# What to do with each target label. Earlier entries = higher priority.
+tasks:
+  - { name: harvest,     targets: [crop_ripe], action: interact }
+  - { name: water,       targets: [crop_dry],  action: tool, tool: watering_can }
+  - { name: clear_weeds, targets: [weed],      action: tool, tool: scythe }
+  - { name: clear_stone, targets: [stone],     action: tool, tool: pickaxe }
+  - { name: clear_twigs, targets: [twig],      action: tool, tool: axe }
+
+controls:
+  up: "w"
+  down: "s"
+  left: "a"
+  right: "d"
+  kill_switch: "f12"
+  pause: "f11"
+  tool_cooldown_s: 0.45            # tool animation length; we don't re-perceive targets until it ends
+  interact_cooldown_s: 0.30
+  min_hold_s: 0.08                 # min time a direction key is held (prevents jitter)
+  jitter_ms: [15, 40]              # human-like random delay between press/release
+  max_attempts_per_tile: 3
+
+hud:
+  # Energy bar ROI as fractions of the window (x0, y0, x1, y1). Bottom-right vertical bar.
+  energy_roi: [0.955, 0.70, 0.985, 0.97]
+  min_energy: 0.15                 # stop working when below this fraction
+
+loop:
+  target_hz: 40
+  pause_when_unfocused: true
