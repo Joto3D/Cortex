@@ -24,11 +24,20 @@ log = logging.getLogger("cortex")
 
 
 class Hotkeys:
-    """Global kill-switch and pause hotkeys (pynput, needs Input Monitoring permission)."""
+    """Global kill-switch and pause hotkeys (pynput, needs Input Monitoring permission).
 
-    def __init__(self, kill: str, pause: str):
-        self.stop = threading.Event()
-        self.paused = threading.Event()
+    Pass existing events to share them with another controller (e.g. the menu-bar app).
+    """
+
+    def __init__(
+        self,
+        kill: str,
+        pause: str,
+        stop: threading.Event | None = None,
+        paused: threading.Event | None = None,
+    ):
+        self.stop = stop or threading.Event()
+        self.paused = paused or threading.Event()
         try:
             from pynput import keyboard
         except ImportError:
@@ -66,7 +75,10 @@ def run(
     debug: bool = False,
     dry_run: bool = False,
     record: Path | None = None,
+    stop: threading.Event | None = None,
+    paused: threading.Event | None = None,
 ) -> str:
+    """Play a grid-engine game until done or stopped. Returns why it stopped."""
     from cortex.capture.screen import WindowCapture
     from cortex.control.controller import Controller
     from cortex.control.input_mac import MacInput, frontmost_app_name
@@ -77,7 +89,7 @@ def run(
     planner = FarmPlanner(profile, mission)
     backend = _NullInput() if dry_run else MacInput()
     ctl = Controller(profile, backend, to_screen=cap.to_screen)
-    keys = Hotkeys(profile.controls.kill_switch, profile.controls.pause)
+    keys = Hotkeys(profile.controls.kill_switch, profile.controls.pause, stop, paused)
     if record:
         record.mkdir(parents=True, exist_ok=True)
 
@@ -133,6 +145,64 @@ def run(
     return reason
 
 
+def run_agent(
+    profile: Profile,
+    goal: str,
+    dry_run: bool = False,
+    stop: threading.Event | None = None,
+    paused: threading.Event | None = None,
+    on_status=lambda s: None,
+):
+    """Play an agent-engine game (any game, including 3D) with Claude. Returns an AgentResult."""
+    from cortex.agent import ActionExecutor, GameAgent
+    from cortex.capture.screen import WindowCapture
+    from cortex.control.input_mac import MacInput, frontmost_app_name
+
+    cap = WindowCapture(profile.window_owner)
+    backend = _NullInput() if dry_run else MacInput()
+    keys = Hotkeys(profile.controls.kill_switch, profile.controls.pause, stop, paused)
+    cfg = profile.agent
+
+    def to_screen(fx: float, fy: float) -> tuple[float, float]:
+        w = cap.window
+        return w.x + fx * w.width, w.y + fy * w.height
+
+    def make_executor() -> ActionExecutor:
+        return ActionExecutor(
+            backend, {k.lower(): str(v).lower() for k, v in (cfg.get("keys") or {}).items()},
+            to_screen, float(cfg.get("look_px_per_degree", 6.0)),
+        )
+
+    def unfocused() -> bool:
+        return profile.pause_when_unfocused and frontmost_app_name() not in (None, profile.window_owner)
+
+    reflex_thread = None
+    if profile.reflexes:
+        from cortex.agent.reflexes import Reflexes, ReflexThread
+
+        reflex_exec = make_executor()
+        reflexes = Reflexes(
+            profile.reflexes, build_encoder(profile),
+            press=lambda ks: reflex_exec.execute("hold", {"keys": list(ks), "seconds": 0.3}),
+        )
+        reflex_thread = ReflexThread(reflexes, cap.grab).start()
+
+    executor = make_executor()
+    agent = GameAgent(
+        profile, goal, cap.grab, executor,
+        should_stop=keys.stop.is_set,
+        is_paused=lambda: keys.paused.is_set() or unfocused(),
+        on_status=on_status,
+    )
+    log.info("playing %s with Claude; %s to stop, %s to pause", profile.name, profile.controls.kill_switch, profile.controls.pause)
+    try:
+        return agent.run()
+    finally:
+        executor.release_all()
+        if reflex_thread:
+            reflex_thread.stop()
+
+
 class _NullInput:
     def key(self, name, down):
         log.debug("key %s %s", name, "down" if down else "up")
@@ -140,17 +210,20 @@ class _NullInput:
     def mouse_move(self, x, y):
         pass
 
+    def mouse_delta(self, dx, dy):
+        log.debug("mouse delta %.0f,%.0f", dx, dy)
+
     def mouse_button(self, x, y, button, down):
         log.debug("mouse %s %s at %.0f,%.0f", button, "down" if down else "up", x, y)
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(description="Cortex farming bot")
+    ap = argparse.ArgumentParser(description="Cortex: plays games for you")
     ap.add_argument("-a", "--assignment", help='what to do, in plain English, e.g. "harvest, then water the crops"')
     ap.add_argument("--offline", action="store_true", help="understand the assignment with keywords only (no Claude)")
     ap.add_argument("--model", default=DEFAULT_MODEL, help="Claude model used to understand the assignment")
     ap.add_argument("-y", "--yes", action="store_true", help="start without confirming the plan")
-    ap.add_argument("--profile", default="stardew", help="bundled profile name or path to a YAML file")
+    ap.add_argument("--profile", "--game", default="stardew", help="game profile name (see `python -m cortex.games list`) or a YAML path")
     ap.add_argument("--debug", action="store_true", help="show the perception overlay window")
     ap.add_argument("--dry-run", action="store_true", help="don't send any input")
     ap.add_argument("--record", type=Path, help="save every 10th frame here (for prompt tuning and tests)")
@@ -158,6 +231,17 @@ def main(argv: list[str] | None = None) -> None:
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     profile = load_profile(a.profile)
+
+    if profile.engine == "agent":
+        goal = a.assignment
+        if goal is None and sys.stdin.isatty():
+            goal = input(f"What should I do in {profile.window_owner or profile.name}? > ")
+        if not a.yes and sys.stdin.isatty():
+            input("Press Enter, then switch to the game window within 3 seconds...")
+            time.sleep(3)
+        result = run_agent(profile, goal or "", dry_run=a.dry_run, on_status=lambda s: log.info("%s", s))
+        print(f"{'Done' if result.success else 'Stopped'}: {result.summary}  ({result.steps} turns, ~${result.cost_usd:.2f})")
+        return
 
     text = a.assignment
     if text is None and sys.stdin.isatty():

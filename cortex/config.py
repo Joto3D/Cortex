@@ -1,8 +1,15 @@
 """Game profile loading.
 
-A profile is a YAML file (see ``cortex/profiles/stardew.yaml``) describing the
-tile size, CLIP labels/prompts, tool hotbar, task priorities and controls for
-one game.
+A profile is a YAML file describing one game. ``engine`` picks how it's played:
+
+* ``grid`` (default): fast tile-grid CLIP perception + rule-based planner, for
+  top-down 2D games (see ``cortex/profiles/stardew.yaml``).
+* ``agent``: a Claude vision agent that can play any game, including 3D ones
+  (see ``cortex/profiles/generic_3d.yaml``).
+
+Bundled profiles live in ``cortex/profiles``. Games you add yourself are saved
+to ``~/Library/Application Support/Cortex/games`` (override with CORTEX_HOME)
+and take precedence over bundled ones with the same name.
 """
 from __future__ import annotations
 
@@ -10,9 +17,37 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import os
+
 import yaml
 
 PROFILE_DIR = Path(__file__).parent / "profiles"
+ENGINES = ("grid", "agent")
+
+
+def cortex_home() -> Path:
+    """Where user data (added games, settings) lives."""
+    env = os.environ.get("CORTEX_HOME")
+    if env:
+        return Path(env)
+    return Path.home() / "Library" / "Application Support" / "Cortex"
+
+
+def user_profile_dir() -> Path:
+    return cortex_home() / "games"
+
+
+@dataclass(frozen=True)
+class ReflexSpec:
+    """An instant local reaction: when a screen region matches ``prompt`` (vs ``otherwise``), press ``keys``."""
+
+    name: str
+    prompt: str
+    otherwise: str
+    keys: tuple[str, ...]
+    roi: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0)
+    threshold: float = 0.7
+    cooldown_s: float = 2.0
 
 
 @dataclass(frozen=True)
@@ -63,6 +98,10 @@ class Profile:
     min_energy: float
     target_hz: float
     pause_when_unfocused: bool
+    engine: str = "grid"
+    description: str = ""
+    agent: dict[str, Any] = field(default_factory=dict)
+    reflexes: tuple[ReflexSpec, ...] = ()
     raw: dict[str, Any] = field(repr=False, default_factory=dict)
 
     @property
@@ -80,11 +119,29 @@ class Profile:
         return frozenset(l.name for l in self.labels if l.walkable)
 
 
-def load_profile(name_or_path: str | Path) -> Profile:
-    """Load a profile by bundled name (``"stardew"``) or by file path."""
+def find_profile(name_or_path: str | Path) -> Path:
     path = Path(name_or_path)
-    if not path.suffix:
-        path = PROFILE_DIR / f"{name_or_path}.yaml"
+    if path.suffix:
+        return path
+    for d in (user_profile_dir(), PROFILE_DIR):
+        candidate = d / f"{name_or_path}.yaml"
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(f"no game profile named {str(name_or_path)!r}; known: {', '.join(list_profiles())}")
+
+
+def list_profiles() -> list[str]:
+    """Names of every available game profile (your added games first, then bundled ones)."""
+    names: list[str] = []
+    for d in (user_profile_dir(), PROFILE_DIR):
+        if d.is_dir():
+            names += [p.stem for p in sorted(d.glob("*.yaml")) if p.stem not in names]
+    return names
+
+
+def load_profile(name_or_path: str | Path) -> Profile:
+    """Load a profile by name (``"stardew"``) or by file path."""
+    path = find_profile(name_or_path)
     with open(path) as f:
         raw = yaml.safe_load(f)
     return profile_from_dict(raw, name=path.stem)
@@ -92,10 +149,15 @@ def load_profile(name_or_path: str | Path) -> Profile:
 
 def profile_from_dict(raw: dict[str, Any], name: str = "custom") -> Profile:
     game = raw.get("game", {})
+    engine = raw.get("engine", "grid")
+    if engine not in ENGINES:
+        raise ValueError(f"engine must be one of {ENGINES}, not {engine!r}")
     labels = tuple(
         LabelSpec(name=k, prompts=tuple(v["prompts"]), walkable=bool(v.get("walkable", True)))
-        for k, v in raw["labels"].items()
+        for k, v in (raw.get("labels") or {}).items()
     )
+    if engine == "grid" and not labels:
+        raise ValueError("a grid-engine profile needs 'labels'")
     label_names = {l.name for l in labels}
 
     tasks = []
@@ -122,6 +184,18 @@ def profile_from_dict(raw: dict[str, Any], name: str = "custom") -> Profile:
         c["jitter_ms"] = tuple(c["jitter_ms"])
     hud = raw.get("hud", {})
     loop = raw.get("loop", {})
+    reflexes = tuple(
+        ReflexSpec(
+            name=r["name"],
+            prompt=r["prompt"],
+            otherwise=r.get("otherwise", "a normal video game screen"),
+            keys=tuple(str(k) for k in r["keys"]),
+            roi=tuple(r.get("roi", (0.0, 0.0, 1.0, 1.0))),
+            threshold=float(r.get("threshold", 0.7)),
+            cooldown_s=float(r.get("cooldown_s", 2.0)),
+        )
+        for r in raw.get("reflexes") or ()
+    )
 
     return Profile(
         name=name,
@@ -138,5 +212,9 @@ def profile_from_dict(raw: dict[str, Any], name: str = "custom") -> Profile:
         min_energy=float(hud.get("min_energy", 0.0)),
         target_hz=float(loop.get("target_hz", 30)),
         pause_when_unfocused=bool(loop.get("pause_when_unfocused", True)),
+        engine=engine,
+        description=str(game.get("description", "")),
+        agent=dict(raw.get("agent") or {}),
+        reflexes=reflexes,
         raw=raw,
     )

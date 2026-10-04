@@ -1,0 +1,50 @@
+# Example profile for a 3D game played by the Claude vision agent.
+# Copy it (or use "Add a game…" in the app, which writes one for you) and adjust the keys.
+
+engine: agent
+
+game:
+  window_owner: "Minecraft"        # the app name shown in the menu bar while the game is focused
+  description: >
+    A first-person 3D sandbox game. WASD moves, the mouse looks around, left click
+    breaks/attacks, right click places/uses, number keys pick hotbar slots.
+
+agent:
+  model: claude-opus-5-5
+  effort: low                      # low = faster turns; medium/high = more careful play
+  max_steps: 150                   # Claude turns before stopping
+  max_cost_usd: 3.00               # stop when the estimated API cost reaches this
+  screenshot_width: 1280           # screenshots are downscaled to this width before sending
+  look_px_per_degree: 6            # mouse movement per degree of camera turn; tune for your sensitivity
+  keys:                            # what each action is called -> key on the keyboard (or mouse button)
+    forward: w
+    back: s
+    left: a
+    right: d
+    jump: space
+    sprint: shift
+    sneak: ctrl
+    inventory: e
+    drop: q
+    attack: mouse_left
+    use: mouse_right
+  tips:
+    - Hold a mouse button (click with hold_seconds) to break blocks; it takes about a second per block.
+    - Look down (positive dy) before breaking blocks under you.
+
+# Instant local reactions, checked many times a second with CLIP (no Claude round-trip).
+reflexes:
+  - name: low_health
+    roi: [0.30, 0.82, 0.50, 0.90]  # x0, y0, x1, y1 as fractions of the window
+    prompt: "a health bar with only one or two red hearts left"
+    otherwise: "a health bar with many full red hearts"
+    threshold: 0.75
+    keys: [s]                      # back off
+    cooldown_s: 3
+
+controls:
+  kill_switch: f12
+  pause: f11
+
+loop:
+  pause_when_unfocused: true

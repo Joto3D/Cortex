@@ -25,8 +25,17 @@ mac = [
     "pynput>=1.7",
 ]
 debug = ["opencv-python>=4.8"]
+app = ["cortex[clip,ai,mac]", "rumps>=0.4", "keyring>=24"]
+build = ["cortex[app]", "pyinstaller>=6.6"]
 dev = ["pytest>=8.0"]
-all = ["cortex[clip,ai,mac,debug,dev]"]
+all = ["cortex[clip,ai,mac,app,debug,dev]"]
+
+[project.scripts]
+cortex = "cortex.loop:main"
+cortex-games = "cortex.games:main"
+
+[project.gui-scripts]
+cortex-app = "cortex.app.main:main"
 
 [tool.setuptools.packages.find]
 include = ["cortex*"]
