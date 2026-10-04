@@ -198,8 +198,26 @@ class CortexApp(rumps.App):
         rumps.alert("Setup done", "Pick a game, set an assignment, then press Start.\nF12 stops Cortex at any time; F11 pauses.")
 
 
+def selftest() -> None:
+    """Import everything the app needs at runtime (used by CI on the built Cortex.app)."""
+    import importlib
+
+    for mod in ("anthropic", "keyring", "mss", "numpy", "open_clip", "PIL", "pynput.keyboard", "Quartz",
+                "torch", "yaml", "cortex.agent", "cortex.games", "cortex.loop", "cortex.perception.clip_model"):
+        importlib.import_module(mod)
+    from cortex.config import list_profiles
+
+    assert "stardew" in list_profiles() and "generic_3d" in list_profiles()
+    print("Cortex selftest OK")
+
+
 def main() -> None:
+    import sys
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    if "--selftest" in sys.argv:
+        selftest()
+        return
     CortexApp().run()
 
 

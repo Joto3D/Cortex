@@ -1,15 +1,54 @@
 # Cortex
 
-A bot that plays single-player farming sims for you. It watches the game window,
-works out what's on screen with a contrastive vision-language model (CLIP), and
-drives keyboard and mouse fast enough to keep up with a human player.
+A Mac app that plays single-player games for you. Tell it what to do in plain English
+("harvest everything, then water the crops", "gather wood and build a small hut"), and it
+watches the game window and plays with the keyboard and mouse.
 
-Stardew Valley on macOS (Apple Silicon) is the reference target.
+It has two ways of playing, chosen per game:
+
+| Engine | For | How it sees | Speed |
+|---|---|---|---|
+| **grid** | Top-down 2D tile games (Stardew Valley is built in) | CLIP labels every tile on screen | Reacts in milliseconds |
+| **agent** | **Any game, including 3D** (add your own with "Add a game…") | Claude looks at screenshots and decides; CLIP *reflexes* react instantly to dangers | A few seconds per decision, several actions each |
 
 > **Use it only in single-player or offline games.** Botting in online games usually
 > breaks their Terms of Service and can get your account banned.
 
 **Website:** https://joto3d.github.io/Cortex/ (try the assignment demo in your browser)
+
+## Install (Mac app)
+
+1. Download **Cortex.dmg** from the [latest release](https://github.com/Joto3D/Cortex/releases/latest),
+   open it and drag **Cortex** into **Applications**.
+2. Open Cortex. A 🌱 appears in the menu bar.
+   If macOS says it can't verify the app (builds are unsigned until the project has an Apple
+   Developer ID), go to **System Settings → Privacy & Security** and click **Open Anyway**.
+3. Click 🌱 → **Setup…** and follow the steps: allow Screen Recording, Accessibility and
+   Input Monitoring, then paste your Claude API key (from [console.anthropic.com](https://console.anthropic.com/)).
+   The key is stored in your Mac's Keychain.
+4. Pick a game in **Game ▸**, or choose **Add a game…** while the game is open. Claude looks at it
+   and writes a profile with its controls, tips and danger reflexes.
+5. Set an **Assignment…**, press **Start**, and switch to the game. **F12** stops Cortex at any time
+   and **F11** pauses it.
+
+Requires an Apple Silicon Mac with macOS 13 or later. The first time the vision model is needed,
+it is downloaded (about 300 MB).
+
+## Playing any game (agent engine)
+
+Each turn Claude gets a screenshot and calls game tools: `hold` keys (walk, sprint, mine), `tap`,
+`look` (relative mouse movement for 3D cameras), `click`, `wait`, `note` and `finish`. All the
+tool calls in one turn run back-to-back on your Mac, so the game keeps moving while Claude thinks.
+
+- **Reflexes:** a profile can list screen regions plus a danger description, such as "a health bar
+  with one heart left". CLIP checks these 10 times a second and presses keys immediately.
+- **Limits:** every profile has `max_steps` and `max_cost_usd`. Cortex stops when either is reached.
+  A turn with `claude-opus-5-5` at `effort: low` typically costs about 1–3¢.
+- **Memory:** old screenshots are pruned automatically, and Claude keeps notes of its progress.
+- Profiles live in `~/Library/Application Support/Cortex/games/`. Edit the keys, tips, `effort`
+  or `look_px_per_degree` (camera sensitivity) there.
+
+From the terminal: `cortex-games add "Minecraft"`, then `cortex --game minecraft -a "gather wood"`.
 
 ## Give it an assignment
 
@@ -58,14 +97,15 @@ Start? Switch to the game window after pressing Enter. [Y/n]
 5. **Safety.** F12 is the kill switch and F11 pauses. The bot also pauses automatically when the
    game window loses focus, and it stops when energy is low or no work is visible.
 
-## Setup (macOS)
+## Developer setup (from source)
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[all]"
+python -m cortex.app          # run the menu-bar app from source
 ```
 
-Grant your terminal app these permissions in **System Settings → Privacy & Security**:
+When running from a terminal, grant your terminal app these permissions in **System Settings → Privacy & Security**:
 - **Screen Recording**, to capture the game window
 - **Accessibility**, to send key and mouse events
 - **Input Monitoring**, for the F11/F12 global hotkeys
@@ -112,7 +152,12 @@ well for normal tilesets. If the overlay's tile boxes look offset from the real 
 | `cortex/assignment.py` | Plain-English assignment → Mission (Claude, with a keyword fallback) |
 | `cortex/planner/` | Pathing (BFS), actions, farm task planner (runs missions step by step) |
 | `cortex/control/` | Quartz CGEvent input and the action → input controller |
-| `cortex/loop.py` | Main loop, hotkeys, dry-run and recording |
+| `cortex/loop.py` | Main loop (grid engine), `run_agent` (agent engine), hotkeys, dry-run and recording |
+| `cortex/agent/` | Claude vision agent: game tools, action executor, CLIP reflexes |
+| `cortex/games.py` | "Add a game": Claude drafts a profile; `cortex-games list/add/show/windows` |
+| `cortex/app/` | Menu-bar app (`rumps`), UI-free `AppController`, permissions and Keychain |
+| `packaging/` | PyInstaller spec, icon and entitlements for `Cortex.app` |
+| `cortex/profiles/generic_3d.yaml` | Example agent profile (a Minecraft-like 3D game) |
 | `cortex/profiles/stardew.yaml` | Labels/prompts, tools, tasks (with descriptions and keywords), controls, HUD for Stardew |
 | `docs/` | GitHub Pages website (`index.html`, the JS parser port `assign.mjs`, generated `tasks.json`) |
 
@@ -122,6 +167,20 @@ well for normal tilesets. If the overlay's tile boxes look offset from the real 
 that touches `docs/`. Before the first deploy, enable it once in the repo's
 **Settings → Pages → Source: GitHub Actions**. If you change tasks in the profile, run
 `python scripts/export_site_data.py`; a test fails if `docs/tasks.json` is stale.
+
+## Releasing the Mac app
+
+`.github/workflows/mac-app.yml` builds `Cortex.app` and `Cortex.dmg` on a macOS runner. Every pull
+request that touches the app is built and self-tested, and every `v*` tag publishes a GitHub Release:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+To ship **signed and notarized** builds, so there is no "Open Anyway" step, add these repository
+secrets from an Apple Developer account: `APPLE_CERT_P12` (a base64 Developer ID Application
+certificate), `APPLE_CERT_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID` and `APPLE_APP_PASSWORD`
+(an app-specific password). The workflow signs and notarizes automatically when they are present.
 
 ## Tests
 
@@ -140,4 +199,5 @@ torch, no macOS) and cover grid detection, caching, pathing, planning and input.
   keeping CLIP as the teacher for new labels.
 - **ScreenCaptureKit** streaming capture backend.
 - Exploring beyond the visible screen, going to bed at night, refilling the watering can.
-- More game profiles.
+- More bundled game profiles; a shared gallery of community profiles.
+- Faster agent turns: stream tool calls and start running them before Claude finishes the turn.

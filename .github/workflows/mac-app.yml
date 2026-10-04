@@ -1,0 +1,88 @@
+name: Mac app
+
+# Builds Cortex.app + Cortex.dmg on a Mac runner.
+#  - Pull requests touching the app/packaging: build + self-test only (catches packaging breakage).
+#  - Tags like v0.2.0: also publish the .dmg as a GitHub Release.
+# Signing/notarization runs only when the Apple secrets are configured (see README "Releasing").
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: ["cortex/**", "packaging/**", "pyproject.toml", ".github/workflows/mac-app.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[build,dev]"
+
+      - name: Tests
+        run: pytest -q
+
+      - name: Import signing certificate
+        if: env.APPLE_CERT_P12 != ''
+        run: |
+          KC=$RUNNER_TEMP/build.keychain-db
+          security create-keychain -p ci "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p ci "$KC"
+          echo "$APPLE_CERT_P12" | base64 --decode > $RUNNER_TEMP/cert.p12
+          security import $RUNNER_TEMP/cert.p12 -k "$KC" -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$KC"
+          security list-keychains -d user -s "$KC" login.keychain
+          ID=$(security find-identity -v -p codesigning "$KC" | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
+          echo "CODESIGN_IDENTITY=$ID" >> $GITHUB_ENV
+
+      - name: Build Cortex.app
+        run: |
+          python packaging/make_icon.py
+          pyinstaller packaging/cortex.spec --noconfirm --distpath dist --workpath packaging/build/work
+
+      - name: Self-test the built app
+        run: dist/Cortex.app/Contents/MacOS/Cortex --selftest
+
+      - name: Make Cortex.dmg
+        run: |
+          mkdir -p dmg && cp -R dist/Cortex.app dmg/ && ln -s /Applications dmg/Applications
+          hdiutil create -volname Cortex -srcfolder dmg -ov -format UDZO Cortex.dmg
+          du -h Cortex.dmg
+
+      - name: Notarize
+        if: env.APPLE_CERT_P12 != '' && env.APPLE_ID != ''
+        run: |
+          codesign --force --sign "$CODESIGN_IDENTITY" Cortex.dmg
+          xcrun notarytool submit Cortex.dmg --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple Cortex.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cortex-dmg
+          path: Cortex.dmg
+          retention-days: 14
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Cortex.dmg
+          generate_release_notes: true
