@@ -177,6 +177,9 @@ request that touches the app is built and self-tested, and every `v*` tag publis
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
+Or, without git: **Actions → Mac app → Run workflow**, on `main`, with a `release_tag` such as `v0.2.0`.
+The workflow creates the tag and the release.
+
 To ship **signed and notarized** builds, so there is no "Open Anyway" step, add these repository
 secrets from an Apple Developer account: `APPLE_CERT_P12` (a base64 Developer ID Application
 certificate), `APPLE_CERT_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID` and `APPLE_APP_PASSWORD`
