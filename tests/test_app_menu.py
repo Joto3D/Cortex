@@ -60,3 +60,37 @@ def test_main_logs_startup(app_module, tmp_path, monkeypatch):
     app_module.main()
     log = (tmp_path / "cortex.log").read_text()
     assert "entering run loop" in log
+
+
+def test_teach_menu_and_taught_skills(app_module):
+    import numpy as np
+
+    from cortex.teach import Skill, Tick
+
+    app = app_module.CortexApp()
+    assert titles(app.teach_menu)[0] == "Record new skill…"
+    assert "No skills yet for this game" in titles(app.teach_menu)
+
+    Skill("water the crops", "stardew", np.zeros((10, 3), np.float32), [Tick()] * 10, np.zeros(10, np.int32)).save()
+    app._rebuild_teach()
+    app._rebuild_assignments()
+    assert "✓ water the crops" in titles(app.teach_menu)
+    assert app.teach_menu.title == "Teach (1 skills)"
+    assert "Skills you taught" in titles(app.assignment_menu)
+
+
+def test_add_game_without_api_key_adds_it_for_teaching(app_module, monkeypatch):
+    import rumps
+
+    from cortex.config import load_profile
+
+    monkeypatch.setattr(app_module.system, "load_api_key_into_env", lambda: False)
+    app = app_module.CortexApp()
+    rumps.window_responses.append((1, "Hollow Knight"))
+    rumps.alert_answers.append(0)  # "Record a skill now?" -> Later
+    app.on_add_game(None)
+
+    p = load_profile("hollow_knight")
+    assert p.engine == "skill" and p.window_owner == "Hollow Knight"
+    assert app.ctl.settings.game == "hollow_knight"
+    assert "Hollow Knight  ·  taught" in titles(app.game_menu)

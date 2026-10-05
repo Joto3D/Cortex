@@ -77,21 +77,26 @@ class Timer:
         pass
 
 
+window_responses: list = []  # tests push (clicked, text) tuples here
+
+
 class Window:
     def __init__(self, *a, **k):
         pass
 
     def run(self):
-        return type("Response", (), {"clicked": 0, "text": ""})()
+        clicked, text = window_responses.pop(0) if window_responses else (0, "")
+        return type("Response", (), {"clicked": clicked, "text": text})()
 
 
+alert_answers: list = []  # tests push 1/0 here
 alerts: list = []
 notifications: list = []
 
 
 def alert(title=None, message="", ok=None, cancel=None, other=None, icon_path=None):
     alerts.append((title, message))
-    return 0
+    return alert_answers.pop(0) if alert_answers else 0
 
 
 def notification(title, subtitle, message, **kw):

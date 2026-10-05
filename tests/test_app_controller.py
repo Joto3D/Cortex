@@ -23,6 +23,7 @@ def wait_until(cond, timeout=2.0):
 
 def make(**runners):
     notes = []
+    runners.setdefault("has_api_key", lambda: True)
     ctl = AppController(Settings(), notify=lambda t, m: notes.append((t, m)), start_delay_s=0, **runners)
     return ctl, notes
 
@@ -121,3 +122,88 @@ def test_setup_done_persists_and_elapsed():
     ctl.mark_setup_done()
     assert Settings.load().setup_done
     assert ctl.elapsed == ""
+
+
+# --- teaching & engine choice --------------------------------------------------------
+
+import numpy as np  # noqa: E402
+
+from cortex.teach import InputLog, Recorder, Skill, Tick  # noqa: E402
+
+
+class FakeRecorder:
+    def __init__(self):
+        self._stop = threading.Event()
+        self.ran = False
+
+    def run(self):
+        self.ran = True
+        self._stop.wait(5)
+
+    def stop(self):
+        self._stop.set()
+
+
+def test_recording_flow_learns_and_selects_skill():
+    rec = FakeRecorder()
+    cleaned = []
+    learned = []
+
+    def learn(recorder, name, profile):
+        learned.append((recorder, name, profile.name))
+        return Skill(name, profile.name, np.zeros((20, 3), np.float32), [Tick()] * 20, np.zeros(20, np.int32))
+
+    ctl, notes = make(make_recorder=lambda p: (rec, lambda: cleaned.append(1)), learn=learn)
+    ctl.start_recording("chop trees")
+    assert wait_until(lambda: rec.ran)
+    assert ctl.recording and ctl.busy and ctl.status.startswith("⏺ Recording")
+    with pytest.raises(RuntimeError):
+        ctl.start_recording("again")
+    ctl.stop_recording()
+    assert not ctl.recording
+    assert learned == [(rec, "chop trees", "stardew")]
+    assert cleaned == [1]
+    assert ctl.settings.assignment == "chop trees"
+    assert notes[-1][0] == "Cortex learned a skill" and "2s" in notes[-1][1]
+
+
+def test_recording_needs_a_name_and_reports_errors():
+    ctl, notes = make(make_recorder=lambda p: (_ for _ in ()).throw(RuntimeError("no game window")))
+    with pytest.raises(ValueError):
+        ctl.start_recording("  ")
+    ctl.start_recording("fish")
+    assert wait_until(lambda: not ctl.recording)
+    assert ctl.status == "Error: no game window" and notes[-1][0] == "Recording failed"
+
+
+def test_engine_choice_without_api_key(home):
+    from cortex.games import add_game_offline
+
+    played = []
+    runner = lambda name: (lambda p, a, s, pa, st: played.append((name, p.name, a)) or "ok")  # noqa: E731
+    ctl, _ = make(run_grid=runner("grid"), run_agent=runner("agent"), run_skill=runner("skill"), has_api_key=lambda: False)
+
+    # agent game, no key, no skills: a helpful error, not a crash
+    ctl.select_game("generic_3d")
+    with pytest.raises(RuntimeError, match="Teach"):
+        ctl.runner_for(load("generic_3d"))
+
+    # once it has a skill, it plays the skill instead
+    Skill("build hut", "generic_3d", np.zeros((10, 3), np.float32), [Tick()] * 10, np.zeros(10, np.int32)).save()
+    assert ctl.skills() == ["build hut"]
+    assert ctl.runner_for(load("generic_3d")) is ctl._run_skill
+
+    # with a key, agent games use Claude
+    ctl._has_api_key = lambda: True
+    assert ctl.runner_for(load("generic_3d")) is ctl._run_agent
+
+    # games added offline always use skills; Stardew stays on its fast grid mode
+    add_game_offline("Hollow Knight")
+    assert ctl.runner_for(load("hollow_knight")) is ctl._run_skill
+    assert ctl.runner_for(load("stardew")) is ctl._run_grid
+
+
+def load(name):
+    from cortex.config import load_profile
+
+    return load_profile(name)

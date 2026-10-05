@@ -26,7 +26,10 @@ WEBSITE = "https://joto3d.github.io/Cortex/"
 RELEASES = "https://github.com/Joto3D/Cortex/releases/latest"
 ADD_GAME = "Add a game…"
 NEW_ASSIGNMENT = "Type a new assignment…"
-ICONS = {"idle": "🌱", "starting": "⏳", "running": "▶︎", "paused": "⏸", "error": "⚠️"}
+ICONS = {"idle": "🌱", "starting": "⏳", "running": "▶︎", "paused": "⏸", "error": "⚠️", "recording": "⏺", "learning": "🧠"}
+RECORD = "Record new skill…"
+STOP_RECORDING = "Stop recording"
+MODE_LABEL = {"grid": "fast 2D", "agent": "thinking", "skill": "taught"}
 
 
 def log_path():
@@ -59,12 +62,14 @@ class CortexApp(rumps.App):
         self.start_item = rumps.MenuItem("Start", callback=self.on_start, key="s")
         self.pause_item = rumps.MenuItem("Pause", callback=self.on_pause, key="p")
         self.stop_item = rumps.MenuItem("Stop", callback=self.on_stop, key=".")
+        self.teach_menu = rumps.MenuItem("Teach")
         self.menu = [
             self.status_item,
             self.detail_item,
             None,
             self.game_menu,
             self.assignment_menu,
+            self.teach_menu,
             None,
             self.start_item,
             self.pause_item,
@@ -81,6 +86,7 @@ class CortexApp(rumps.App):
         ]
         self._rebuild_games()
         self._rebuild_assignments()
+        self._rebuild_teach()
         self._refresh()
         self._timer = rumps.Timer(self._tick, 0.5)
         self._timer.start()
@@ -96,7 +102,7 @@ class CortexApp(rumps.App):
         for name in self.ctl.games():
             try:
                 p = load_profile(name)
-                label = f"{p.window_owner or name}  ·  {'fast 2D' if p.engine == 'grid' else 'thinking'}"
+                label = f"{p.window_owner or name}  ·  {MODE_LABEL.get(p.engine, p.engine)}"
             except Exception:
                 label = name
             item = rumps.MenuItem(label, callback=self.on_pick_game)
@@ -125,6 +131,15 @@ class CortexApp(rumps.App):
                 item.assignment = text
                 item.state = int(text == current)
                 m.add(item)
+        skills = [k for k in self._skills() if k not in recent]
+        if skills:
+            m.add(None)
+            m.add(rumps.MenuItem("Skills you taught"))
+            for text in skills:
+                item = rumps.MenuItem(_short(text, 50), callback=self.on_pick_assignment)
+                item.assignment = text
+                item.state = int(text == current)
+                m.add(item)
         ideas = [i for i in self.ctl.example_assignments() if i not in recent]
         if ideas:
             m.add(None)
@@ -135,7 +150,32 @@ class CortexApp(rumps.App):
                 m.add(item)
         m.title = f"Assignment: {_short(current, 32)}" if current else "Assignment: (none yet)"
 
+    def _skills(self) -> list[str]:
+        try:
+            return self.ctl.skills()
+        except Exception:
+            return []
+
+    def _rebuild_teach(self) -> None:
+        m = self.teach_menu
+        _clear_submenu(m)
+        recording = self.ctl.recording
+        m.add(rumps.MenuItem(STOP_RECORDING if recording else RECORD, callback=self.on_record, key="r"))
+        m.add(None)
+        skills = self._skills()
+        if skills:
+            for name in skills:
+                m.add(rumps.MenuItem(f"✓ {name}"))
+        else:
+            m.add(rumps.MenuItem("No skills yet for this game"))
+        m.add(None)
+        m.add(rumps.MenuItem("How teaching works", callback=self.on_teach_help))
+        m.add(rumps.MenuItem("Open skills folder", callback=self.on_open_skills))
+        m.title = "Teach: ⏺ recording…" if recording else (f"Teach ({len(skills)} skills)" if skills else "Teach")
+
     def _state(self) -> str:
+        if self.ctl.recording:
+            return "learning" if self.ctl.status.startswith("Learning") else "recording"
         if self.ctl.running:
             if self.ctl.paused.is_set():
                 return "paused"
@@ -145,11 +185,17 @@ class CortexApp(rumps.App):
     def _refresh(self) -> None:
         state = self._state()
         running = self.ctl.running
+        busy = self.ctl.busy
         self.title = ICONS[state]
+        if self.ctl.recording != getattr(self, "_was_recording", False):
+            self._was_recording = self.ctl.recording
+            self._rebuild_teach()
+            if not self.ctl.recording:
+                self._rebuild_assignments()
         elapsed = self.ctl.elapsed
         self.status_item.title = _short(self.ctl.status, 60) + (f"  ({elapsed})" if elapsed else "")
         self.detail_item.title = "F12 stops · F11 pauses" if running else _short(self.ctl.last_result or "", 60)
-        self.start_item.set_callback(None if running else self.on_start)
+        self.start_item.set_callback(None if busy else self.on_start)
         self.pause_item.set_callback(self.on_pause if running else None)
         self.pause_item.title = "Resume" if self.ctl.paused.is_set() else "Pause"
         self.stop_item.set_callback(self.on_stop if running else None)
@@ -183,6 +229,7 @@ class CortexApp(rumps.App):
             rumps.alert("Cortex", str(e))
         self._rebuild_games()
         self._rebuild_assignments()
+        self._rebuild_teach()
 
     def on_assignment(self, _) -> None:
         ideas = self.ctl.example_assignments()
@@ -231,13 +278,54 @@ class CortexApp(rumps.App):
             "Only use it in single-player or offline games.\n\n" + WEBSITE,
         )
 
+    def on_record(self, _) -> None:
+        if self.ctl.recording:
+            self.ctl.status = "Learning…"
+            threading.Thread(target=self.ctl.stop_recording, daemon=True).start()
+            return
+        if not self._permissions_ok():
+            return
+        r = rumps.Window(
+            "What will you do while recording? Give it a short name, like “chop trees” or “fish at the lake”.\n\n"
+            "After you press Record you have 3 seconds to switch to the game. Then play normally for 2–5 minutes, "
+            "and press F12 when you're done. Recording the same name again adds more examples.",
+            RECORD, ok="Record", cancel="Cancel", dimensions=(320, 24),
+        ).run()
+        if not r.clicked or not r.text.strip():
+            return
+        try:
+            self.ctl.start_recording(r.text)
+        except (RuntimeError, ValueError) as e:
+            rumps.alert("Cortex", str(e))
+        self._rebuild_teach()
+
+    def on_teach_help(self, _) -> None:
+        rumps.alert(
+            "Teach Cortex by showing it",
+            "1. Teach ▸ Record new skill… and give it a name.\n"
+            "2. Switch to the game and play normally for a few minutes.\n"
+            "3. Press F12 (or Teach ▸ Stop recording).\n"
+            "4. Pick the skill as the assignment and press Start.\n\n"
+            "Cortex looks at the screen, finds the moment in your recording that looks most similar, and does what "
+            "you did next. It works in any game, entirely on your Mac, with no API key.\n\n"
+            "It can only repeat what it has seen, so record a few varied examples. "
+            "It only records while the game window is in front.",
+        )
+
+    def on_open_skills(self, _) -> None:
+        from cortex.teach.skill import skills_dir
+
+        d = skills_dir(load_profile(self.ctl.settings.game).name)
+        d.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["open", str(d)], check=False)
+
     def on_open_games(self, _) -> None:
         d = user_profile_dir()
         d.mkdir(parents=True, exist_ok=True)
         subprocess.run(["open", str(d)], check=False)
 
     def on_add_game(self, _) -> None:
-        from cortex.games import add_game, list_windows
+        from cortex.games import add_game, add_game_offline, list_windows
 
         try:
             windows = list_windows()
@@ -253,7 +341,15 @@ class CortexApp(rumps.App):
         if not r.clicked or not name:
             return
         if not system.load_api_key_into_env():
-            rumps.alert("Cortex", "Adding a game uses Claude. Add your API key in Setup… first.")
+            # No key: add it for teaching by showing (works for any game, fully offline).
+            path = add_game_offline(name, window_owner=name if name in windows else None)
+            self.ctl.select_game(path.stem)
+            self._rebuild_games()
+            self._rebuild_assignments()
+            self._rebuild_teach()
+            if rumps.alert(f"{name} added", "Cortex will learn this game from you. Record yourself playing it now?",
+                           ok="Record a skill", cancel="Later"):
+                self.on_record(None)
             return
         self.ctl.status = f"Asking Claude about {name}…"
 
@@ -324,8 +420,9 @@ def selftest() -> None:
     """Import everything the app needs at runtime (used by CI on the built Cortex.app)."""
     import importlib
 
-    for mod in ("anthropic", "keyring", "mss", "numpy", "open_clip", "PIL", "pynput.keyboard", "Quartz",
-                "torch", "yaml", "cortex.agent", "cortex.games", "cortex.loop", "cortex.perception.clip_model"):
+    for mod in ("anthropic", "keyring", "mss", "numpy", "open_clip", "PIL", "pynput.keyboard", "pynput.mouse", "Quartz",
+                "torch", "yaml", "cortex.agent", "cortex.games", "cortex.loop", "cortex.perception.clip_model",
+                "cortex.teach", "cortex.teach.recorder"):
         importlib.import_module(mod)
     from cortex.config import list_profiles
 

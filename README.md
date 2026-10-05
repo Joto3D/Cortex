@@ -34,7 +34,27 @@ It has two ways of playing, chosen per game:
 Requires an Apple Silicon Mac with macOS 13 or later. The first time the vision model is needed,
 it is downloaded (about 300 MB).
 
-## Playing any game (agent engine)
+## Teach it any game, no API key needed
+
+Show Cortex what to do, and it repeats it, in any game, 2D or 3D, entirely on your Mac:
+
+1. **Teach ▸ Record new skill…**, then give it a name such as "chop trees".
+2. Switch to the game and play normally for 2–5 minutes, then press **F12**.
+3. Pick the skill under **Assignment ▸ Skills you taught** and press **Start**.
+
+While you play, Cortex saves 10 screen "fingerprints" per second (MobileCLIP embeddings) together with the keys
+you held, mouse movement and clicks. When it plays, it fingerprints the live screen, finds the most similar moment
+in your recordings, and does what you did next for half a second. Then it looks again. There's no training step,
+no download beyond the small vision model it already uses, and no API key.
+
+- It only records while the game window is in front, and never records ⌘-shortcuts or F11/F12.
+- It can only repeat what it has seen: record a few varied examples. Recording the same name again adds more.
+- If the screen doesn't look like anything in the recordings for a few seconds, it stops and tells you.
+- Games added without an API key use this mode automatically. From the terminal:
+  `cortex-games add "Hollow Knight" --offline`, `python -m cortex.teach record --game hollow_knight "explore"`,
+  `python -m cortex.teach play --game hollow_knight`.
+
+## Playing any game with Claude (agent engine)
 
 Each turn Claude gets a screenshot and calls game tools: `hold` keys (walk, sprint, mine), `tap`,
 `look` (relative mouse movement for 3D cameras), `click`, `wait`, `note` and `finish`. All the
@@ -154,6 +174,7 @@ well for normal tilesets. If the overlay's tile boxes look offset from the real 
 | `cortex/control/` | Quartz CGEvent input and the action → input controller |
 | `cortex/loop.py` | Main loop (grid engine), `run_agent` (agent engine), hotkeys, dry-run and recording |
 | `cortex/agent/` | Claude vision agent: game tools, action executor, CLIP reflexes |
+| `cortex/teach/` | Teach by showing: recorder, skills (embeddings + action ticks), nearest-moment player |
 | `cortex/games.py` | "Add a game": Claude drafts a profile; `cortex-games list/add/show/windows` |
 | `cortex/app/` | Menu-bar app (`rumps`), UI-free `AppController`, permissions and Keychain |
 | `packaging/` | PyInstaller spec, icon and entitlements for `Cortex.app` |

@@ -6,6 +6,8 @@ A profile is a YAML file describing one game. ``engine`` picks how it's played:
   top-down 2D games (see ``cortex/profiles/stardew.yaml``).
 * ``agent``: a Claude vision agent that can play any game, including 3D ones
   (see ``cortex/profiles/generic_3d.yaml``).
+* ``skill``: plays skills you taught it by recording yourself (``cortex/teach``).
+  Works for any game, fully offline, no API key. Any profile can also play skills.
 
 Bundled profiles live in ``cortex/profiles``. Games you add yourself are saved
 to ``~/Library/Application Support/Cortex/games`` (override with CORTEX_HOME)
@@ -22,7 +24,7 @@ import os
 import yaml
 
 PROFILE_DIR = Path(__file__).parent / "profiles"
-ENGINES = ("grid", "agent")
+ENGINES = ("grid", "agent", "skill")
 
 
 def cortex_home() -> Path:
