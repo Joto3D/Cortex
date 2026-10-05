@@ -23,8 +23,8 @@ def wait_until(cond, timeout=2.0):
 
 def make(**runners):
     notes = []
-    runners.setdefault("has_api_key", lambda: True)
-    ctl = AppController(Settings(), notify=lambda t, m: notes.append((t, m)), start_delay_s=0, **runners)
+    runners.setdefault("has_key", lambda provider: provider == "anthropic")
+    ctl = AppController(Settings(game="stardew"), notify=lambda t, m: notes.append((t, m)), start_delay_s=0, **runners)
     return ctl, notes
 
 
@@ -94,16 +94,21 @@ def test_crash_is_reported_not_raised():
 
 
 def test_start_delay_can_be_cancelled():
-    ctl = AppController(Settings(), start_delay_s=5, run_grid=lambda *a: pytest.fail("should not run"))
+    ctl = AppController(Settings(game="stardew"), start_delay_s=5, run_grid=lambda *a: pytest.fail("should not run"))
     ctl.start()
     assert wait_until(lambda: ctl.status.startswith("Starting in"))
     ctl.stop()
     assert ctl.status == "Stopped"
 
 
-def test_unknown_saved_game_falls_back_to_stardew():
+def test_unknown_saved_game_means_no_game_yet():
     ctl = AppController(Settings(game="deleted_game"))
-    assert ctl.settings.game == "stardew"
+    assert ctl.settings.game == ""
+    assert ctl.skills() == [] and ctl.example_assignments() == []
+    with pytest.raises(RuntimeError, match="pick your game"):
+        ctl.start()
+    with pytest.raises(RuntimeError, match="pick your game"):
+        ctl.start_recording("x")
 
 
 def test_recent_assignments_dedupe_and_cap():
@@ -176,31 +181,52 @@ def test_recording_needs_a_name_and_reports_errors():
     assert ctl.status == "Error: no game window" and notes[-1][0] == "Recording failed"
 
 
-def test_engine_choice_without_api_key(home):
+def test_engine_choice(home):
     from cortex.games import add_game_offline
 
-    played = []
-    runner = lambda name: (lambda p, a, s, pa, st: played.append((name, p.name, a)) or "ok")  # noqa: E731
-    ctl, _ = make(run_grid=runner("grid"), run_agent=runner("agent"), run_skill=runner("skill"), has_api_key=lambda: False)
+    keys = set()
+    runner = lambda name: (lambda p, a, s, pa, st: name)  # noqa: E731
+    ctl, _ = make(run_grid=runner("grid"), run_agent=runner("agent"), run_skill=runner("skill"),
+                  run_gemini=runner("gemini"), has_key=lambda p: p in keys)
 
-    # agent game, no key, no skills: a helpful error, not a crash
-    ctl.select_game("generic_3d")
-    with pytest.raises(RuntimeError, match="Teach"):
-        ctl.runner_for(load("generic_3d"))
+    # a game picked by its window: no key, no skills -> a helpful error, not a crash
+    add_game_offline("Hollow Knight", "Hollow Knight")
+    ctl.select_game("hollow_knight")
+    hk = load("hollow_knight")
+    assert hk.engine == "auto" and ctl.brain_for(hk) is None
+    with pytest.raises(RuntimeError, match="Gemini key"):
+        ctl.runner_for(hk)
 
-    # once it has a skill, it plays the skill instead
-    Skill("build hut", "generic_3d", np.zeros((10, 3), np.float32), [Tick()] * 10, np.zeros(10, np.int32)).save()
-    assert ctl.skills() == ["build hut"]
-    assert ctl.runner_for(load("generic_3d")) is ctl._run_skill
+    # taught skills work with no key at all
+    Skill("jump pits", "hollow_knight", np.zeros((10, 3), np.float32), [Tick()] * 10, np.zeros(10, np.int32)).save()
+    assert ctl.skills() == ["jump pits"]
+    assert ctl.runner_for(hk) is ctl._run_skill
 
-    # with a key, agent games use Claude
-    ctl._has_api_key = lambda: True
-    assert ctl.runner_for(load("generic_3d")) is ctl._run_agent
+    # a Claude key beats skills, and a free Gemini key beats both
+    keys.add("anthropic")
+    assert ctl.runner_for(hk) is ctl._run_agent
+    keys.add("gemini")
+    assert ctl.brain_for(hk) == "gemini" and ctl.runner_for(hk) is ctl._run_gemini
+    assert ctl.runner_for(load("generic_3d")) is ctl._run_gemini
 
-    # games added offline always use skills; Stardew stays on its fast grid mode
-    add_game_offline("Hollow Knight")
-    assert ctl.runner_for(load("hollow_knight")) is ctl._run_skill
+    # Stardew stays on its fast grid mode
     assert ctl.runner_for(load("stardew")) is ctl._run_grid
+
+
+def test_select_window_creates_or_reuses_a_profile(home):
+    ctl, _ = make()
+    assert ctl.select_window("Celeste") == "celeste"
+    assert ctl.game_title() == "Celeste" and load("celeste").engine == "auto"
+    assert ctl.select_window("Stardew Valley") == "stardew"  # matches the bundled profile's window
+    assert ctl.select_window("Celeste") == "celeste"
+
+
+def test_settings_options_round_trip(home):
+    s = Settings(game="", gemini_model="smart", gemini_rpm=20, start_delay_s=1)
+    s.save()
+    t = Settings.load()
+    assert (t.gemini_model, t.gemini_rpm, t.start_delay_s, t.model_id) == ("smart", 20, 1, "gemini-flash-latest")
+    assert AppController(t).start_delay_s == 1
 
 
 def load(name):

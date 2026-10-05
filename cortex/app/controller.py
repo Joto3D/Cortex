@@ -1,7 +1,7 @@
-"""Everything the menu-bar app does, without any UI code (so it can be unit-tested).
+"""Everything the app does, without any UI code (so it can be unit-tested).
 
-The bot runs on a background thread. The UI polls ``status`` and calls
-start / toggle_pause / stop.
+The bot runs on a background thread. The window and the menu-bar icon poll
+``status`` and call start / toggle_pause / stop.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from cortex.config import cortex_home, list_profiles, load_profile
+from cortex.telemetry import LIVE
 
 log = logging.getLogger(__name__)
 
@@ -20,22 +21,32 @@ log = logging.getLogger(__name__)
 MAX_RECENT = 6
 
 
+MODELS = {"fast": "gemini-flash-lite-latest", "smart": "gemini-flash-latest"}
+BRAINS = {"gemini": "Gemini (free)", "claude": "Claude", "skills": "Taught skills", "grid": "Fast 2D"}
+
+
 @dataclass
 class Settings:
-    game: str = "stardew"
+    game: str = ""
     assignment: str = ""
     recent: list[str] = field(default_factory=list)
     setup_done: bool = False
+    gemini_model: str = "fast"   # "fast" | "smart" | a full model id
+    gemini_rpm: float = 12.0     # stay under the free tier's requests-per-minute limit
+    start_delay_s: float = 3.0
 
     @classmethod
     def load(cls) -> "Settings":
         try:
             data = json.loads((cortex_home() / "settings.json").read_text())
             return cls(
-                game=str(data.get("game", cls.game)),
+                game=str(data.get("game", "")),
                 assignment=str(data.get("assignment", "")),
                 recent=[str(r) for r in data.get("recent", [])][:MAX_RECENT],
                 setup_done=bool(data.get("setup_done", False)),
+                gemini_model=str(data.get("gemini_model", "fast")),
+                gemini_rpm=float(data.get("gemini_rpm", 12.0)),
+                start_delay_s=float(data.get("start_delay_s", 3.0)),
             )
         except (OSError, ValueError, TypeError):
             return cls()
@@ -43,8 +54,15 @@ class Settings:
     def save(self) -> None:
         path = cortex_home() / "settings.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        data = {"game": self.game, "assignment": self.assignment, "recent": self.recent, "setup_done": self.setup_done}
+        data = {
+            "game": self.game, "assignment": self.assignment, "recent": self.recent, "setup_done": self.setup_done,
+            "gemini_model": self.gemini_model, "gemini_rpm": self.gemini_rpm, "start_delay_s": self.start_delay_s,
+        }
         path.write_text(json.dumps(data, indent=2))
+
+    @property
+    def model_id(self) -> str:
+        return MODELS.get(self.gemini_model, self.gemini_model)
 
 
 def _default_run_grid(profile, assignment, stop, paused, on_status) -> str:
@@ -56,10 +74,10 @@ def _default_run_grid(profile, assignment, stop, paused, on_status) -> str:
     return run(profile, mission, stop=stop, paused=paused)
 
 
-def _default_has_api_key() -> bool:
+def _default_has_key(provider: str) -> bool:
     from . import system
 
-    return system.load_api_key_into_env()
+    return system.load_key_into_env(provider)
 
 
 def _default_run_skill(profile, assignment, stop, paused, on_status) -> str:
@@ -105,6 +123,14 @@ def _default_run_agent(profile, assignment, stop, paused, on_status) -> str:
     return f"{result.summary} ({result.steps} turns, ~${result.cost_usd:.2f})"
 
 
+def _default_run_gemini(profile, assignment, stop, paused, on_status, settings: Settings) -> str:
+    from cortex.loop import run_gemini
+
+    result = run_gemini(profile, assignment, model=settings.model_id, rpm=settings.gemini_rpm,
+                        stop=stop, paused=paused, on_status=on_status)
+    return result.summary
+
+
 class AppController:
     def __init__(
         self,
@@ -113,26 +139,30 @@ class AppController:
         run_grid=_default_run_grid,
         run_agent=_default_run_agent,
         run_skill=_default_run_skill,
-        has_api_key: Callable[[], bool] = _default_has_api_key,
+        run_gemini=None,
+        has_key: Callable[[str], bool] = _default_has_key,
         make_recorder=_default_make_recorder,
         learn=_default_learn,
-        start_delay_s: float = 3.0,
+        start_delay_s: float | None = None,
     ):
         self.settings = settings or Settings.load()
         if self.settings.game not in self.games():
-            self.settings.game = "stardew"
+            self.settings.game = ""
         self.notify = notify
         self._run_grid = run_grid
         self._run_agent = run_agent
         self._run_skill = run_skill
-        self._has_api_key = has_api_key
+        self._run_gemini = run_gemini or (
+            lambda p, a, stop, paused, on_status: _default_run_gemini(p, a, stop, paused, on_status, self.settings)
+        )
+        self._has_key = has_key
         self._make_recorder = make_recorder
         self._learn = learn
         self._recorder = None
         self._rec_thread: threading.Thread | None = None
         self._rec_stop = threading.Event()
         self.recording_name: str | None = None
-        self.start_delay_s = start_delay_s
+        self._start_delay_override = start_delay_s
         self.stop_event = threading.Event()
         self.paused = threading.Event()
         self._thread: threading.Thread | None = None
@@ -140,13 +170,38 @@ class AppController:
         self.last_result: str | None = None
         self.started_at: float | None = None
 
+    @property
+    def start_delay_s(self) -> float:
+        if self._start_delay_override is not None:
+            return self._start_delay_override
+        return self.settings.start_delay_s
+
     # -- choices --------------------------------------------------------------
     def games(self) -> list[str]:
         return list_profiles()
 
+    def select_window(self, app_name: str) -> str:
+        """Pick a game by its open window; creates a profile the first time. Returns the profile name."""
+        from cortex.games import game_for_window
+
+        if self.busy:
+            raise RuntimeError("stop Cortex before switching games")
+        name = game_for_window(app_name)
+        self.select_game(name)
+        return name
+
+    def game_title(self) -> str:
+        if not self.settings.game:
+            return ""
+        try:
+            p = load_profile(self.settings.game)
+            return p.window_owner or p.name
+        except Exception:
+            return self.settings.game
+
     def select_game(self, name: str) -> None:
         if self.busy:
-            raise RuntimeError("stop the bot before switching games")
+            raise RuntimeError("stop Cortex before switching games")
         load_profile(name)  # validate
         self.settings.game = name
         self.settings.save()
@@ -173,15 +228,27 @@ class AppController:
     def skills(self) -> list[str]:
         from cortex.teach import list_skills
 
+        if not self.settings.game:
+            return []
         return [s.name for s in list_skills(load_profile(self.settings.game).name)]
 
+    def delete_skill(self, name: str) -> None:
+        from cortex.teach import list_skills
+
+        if self.busy:
+            raise RuntimeError("stop Cortex first")
+        for s in list_skills(load_profile(self.settings.game).name):
+            if s.name == name:
+                s.delete()
+
     def example_assignments(self) -> list[str]:
-        p = load_profile(self.settings.game)
-        if p.engine == "skill":
+        if not self.settings.game:
             return []
-        if p.engine == "agent":
-            return list(p.agent.get("example_assignments") or [])
-        return ["harvest everything, then water the crops", "clear the weeds and break 5 rocks", "do all the chores"]
+        p = load_profile(self.settings.game)
+        if p.engine == "grid":
+            return ["harvest everything, then water the crops", "clear the weeds and break 5 rocks", "do all the chores"]
+        ideas = list(p.agent.get("example_assignments") or [])
+        return ideas or ["explore and collect resources", "follow the path and see what's ahead", "get to the next level"]
 
     # -- running ----------------------------------------------------------------
     @property
@@ -196,25 +263,45 @@ class AppController:
     def busy(self) -> bool:
         return self.running or self.recording
 
-    def runner_for(self, profile):
-        """Which way to play: Claude only when a key is set; otherwise learned skills."""
+    @property
+    def mode(self) -> str:
+        """idle | starting | running | paused | recording | learning | error"""
+        if self.recording:
+            return "learning" if self.status.startswith("Learning") else "recording"
+        if self.running:
+            if self.paused.is_set():
+                return "paused"
+            return "starting" if self.status.startswith("Starting") else "running"
+        return "error" if self.status.startswith("Error") else "idle"
+
+    def brain_for(self, profile) -> str | None:
+        """How this game will be played: "gemini" | "claude" | "skills" | "grid", or None if it can't be yet."""
+        if profile.engine == "grid":
+            return "grid"
         if profile.engine == "skill":
-            return self._run_skill
-        if profile.engine == "agent":
-            if self._has_api_key():
-                return self._run_agent
-            if self.skills():
-                return self._run_skill
+            return "skills" if self.skills() else None
+        if self._has_key("gemini"):
+            return "gemini"
+        if self._has_key("anthropic"):
+            return "claude"
+        return "skills" if self.skills() else None
+
+    def runner_for(self, profile):
+        brain = self.brain_for(profile)
+        if brain is None:
             raise RuntimeError(
-                "This game needs a Claude API key for thinking mode. No key? Teach it instead: "
-                "Teach ▸ Record new skill…, then play for a few minutes."
+                "Cortex needs a brain for this game: add your free Gemini key in Settings, "
+                "or teach it in the Teach tab (press Record and play for a few minutes)."
             )
-        return self._run_grid
+        return {"gemini": self._run_gemini, "claude": self._run_agent, "skills": self._run_skill, "grid": self._run_grid}[brain]
 
     def start(self) -> None:
         if self.busy:
             return
+        if not self.settings.game:
+            raise RuntimeError("pick your game first")
         profile = load_profile(self.settings.game)
+        LIVE.reset()
         self.stop_event.clear()
         self.paused.clear()
         self.last_result = None
@@ -231,12 +318,13 @@ class AppController:
                     self.status = "Stopped"
                     return
             runner = self.runner_for(profile)
+            LIVE.brain = BRAINS[self.brain_for(profile)]
             self.status = f"Playing {game}"
             result = runner(profile, self.settings.assignment, self.stop_event, self.paused, self._on_status)
             self.last_result = str(result)
             self.status = f"Finished: {result}"
             self.notify("Cortex finished", str(result))
-        except Exception as e:  # show any failure in the menu instead of dying silently
+        except Exception as e:  # show any failure in the window instead of dying silently
             log.exception("bot crashed")
             self.last_result = f"Error: {e}"
             self.status = f"Error: {e}"
@@ -248,7 +336,9 @@ class AppController:
         if not name:
             raise ValueError("give the skill a name, like “chop trees”")
         if self.busy:
-            raise RuntimeError("stop the bot before recording")
+            raise RuntimeError("stop Cortex before recording")
+        if not self.settings.game:
+            raise RuntimeError("pick your game first")
         profile = load_profile(self.settings.game)
         self.recording_name = name
         self.last_result = None
@@ -274,6 +364,8 @@ class AppController:
                     self.status = "Recording cancelled"
                     return
             self._recorder, cleanup = self._make_recorder(profile)
+            LIVE.reset()
+            LIVE.brain = "Recording"
             self.status = f"⏺ Recording “{name}”: play, then press F12"
             self._recorder.run()
             cleanup()

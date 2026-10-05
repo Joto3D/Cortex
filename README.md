@@ -1,74 +1,89 @@
 # Cortex
 
-A Mac app that plays single-player games for you. Tell it what to do in plain English
-("harvest everything, then water the crops", "gather wood and build a small hut"), and it
+A Mac app that plays single-player games for you, 2D or 3D. Open your game, click its window in
+Cortex, type what to do ("explore and collect wood, then come back"), and press **Start**. It
 watches the game window and plays with the keyboard and mouse.
 
-It has two ways of playing, chosen per game:
-
-| Engine | For | How it sees | Speed |
-|---|---|---|---|
-| **grid** | Top-down 2D tile games (Stardew Valley is built in) | CLIP labels every tile on screen | Reacts in milliseconds |
-| **agent** | **Any game, including 3D** (add your own with "Add a game…") | Claude looks at screenshots and decides; CLIP *reflexes* react instantly to dangers | A few seconds per decision, several actions each |
+- **Free AI brain:** Google Gemini, with a free API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+  (about a minute, no card).
+- **Fast hands:** keys and mouse never wait for the network. Moves run on your Mac, and taught skills react in about 50 ms.
+- **Teach by showing:** record yourself playing and Cortex repeats it. This works fully offline, with no key.
 
 > **Use it only in single-player or offline games.** Botting in online games usually
 > breaks their Terms of Service and can get your account banned.
 
-**Website:** https://joto3d.github.io/Cortex/ (try the assignment demo in your browser)
+**Website:** https://joto3d.github.io/Cortex/
 
 ## Install (Mac app)
 
 1. Download **Cortex.dmg** from the [latest release](https://github.com/Joto3D/Cortex/releases/latest),
    open it and drag **Cortex** into **Applications**.
-2. Open Cortex. A 🌱 appears in the menu bar.
-   If macOS says it can't verify the app (builds are unsigned until the project has an Apple
-   Developer ID), go to **System Settings → Privacy & Security** and click **Open Anyway**.
-3. Click 🌱 → **Setup…** and follow the steps: allow Screen Recording, Accessibility and
-   Input Monitoring, then paste your Claude API key (from [console.anthropic.com](https://console.anthropic.com/)).
-   The key is stored in your Mac's Keychain.
-4. Pick a game in **Game ▸**, or choose **Add a game…** while the game is open. Claude looks at it
-   and writes a profile with its controls, tips and danger reflexes.
-5. Set an **Assignment…**, press **Start**, and switch to the game. **F12** stops Cortex at any time
-   and **F11** pauses it.
+2. Open Cortex. If macOS says it can't verify the app, go to **System Settings → Privacy & Security** and
+   click **Open Anyway**. (Builds are unsigned until the project has an Apple Developer ID.)
+3. The welcome screen walks you through it: allow Screen Recording, Accessibility and Input Monitoring,
+   then paste your free Gemini key. You can skip the key.
+4. **Play:** open your game, click its window in Cortex, type what to do, press **Start** and switch to the
+   game. **F12** stops Cortex at any time and **F11** pauses it.
 
-Requires an Apple Silicon Mac with macOS 13 or later. The first time the vision model is needed,
-it is downloaded (about 300 MB).
+Cortex has a normal window (Play, Teach, Settings) and a menu-bar icon for Start/Stop while you're in the game.
+The live view shows what Cortex sees, what it plans, and how fast it is reacting.
 
-## Teach it any game, no API key needed
+Requires an Apple Silicon Mac with macOS 13 or later. Skills need a small vision model, which is downloaded
+the first time (about 300 MB).
 
-Show Cortex what to do, and it repeats it, in any game, 2D or 3D, entirely on your Mac:
+## How it stays fast: two speeds
 
-1. **Teach ▸ Record new skill…**, then give it a name such as "chop trees".
+A cloud AI needs about a second to answer, which is too slow to steer every keypress. So Cortex splits the work:
+
+| Lane | Where | Speed | What it does |
+|---|---|---|---|
+| **Hands** | your Mac | ~50 ms | Runs the current plan back-to-back (hold keys, turn the camera, click), plays taught skills, and fires CLIP reflexes |
+| **Brain** | Gemini | ~0.5–1.5 s | Looks at one screenshot and plans the next few seconds as a list of actions |
+
+The next screenshot goes to Gemini *before* the current plan runs out (`cortex/agent/gemini.py`, `GeminiPilot`),
+so a new plan is ready when it's needed and the keys never stand still waiting for the network. Gemini can also
+call `use_skill` to run a skill you taught, which reacts locally ten times a second. Requests stay under the free
+tier's limit (Settings → Requests per minute, default 12). If Google says to slow down, Cortex backs off and
+keeps playing.
+
+What leaves your Mac: with a Gemini key, your instruction and a small JPEG of the game window (only that window)
+every few seconds. Without a key, nothing. Keys are stored in the macOS Keychain.
+
+## Teach it by playing (no key needed)
+
+1. Open the **Teach** page, name a skill (for example "collect wood") and press **Record**.
 2. Switch to the game and play normally for 2–5 minutes, then press **F12**.
-3. Pick the skill under **Assignment ▸ Skills you taught** and press **Start**.
+3. Type the skill's name as the task (or click it) and press **Start**.
 
 While you play, Cortex saves 10 screen "fingerprints" per second (MobileCLIP embeddings) together with the keys
 you held, mouse movement and clicks. When it plays, it fingerprints the live screen, finds the most similar moment
-in your recordings, and does what you did next for half a second. Then it looks again. There's no training step,
-no download beyond the small vision model it already uses, and no API key.
+in your recordings, and does what you did next for half a second. Then it looks again.
 
 - It only records while the game window is in front, and never records ⌘-shortcuts or F11/F12.
-- It can only repeat what it has seen: record a few varied examples. Recording the same name again adds more.
-- If the screen doesn't look like anything in the recordings for a few seconds, it stops and tells you.
-- Games added without an API key use this mode automatically. From the terminal:
-  `cortex-games add "Hollow Knight" --offline`, `python -m cortex.teach record --game hollow_knight "explore"`,
-  `python -m cortex.teach play --game hollow_knight`.
+- It can only repeat what it has seen, so record a few varied examples. Recording the same name again adds more.
+- With a Gemini key, Gemini decides when to use which skill and fills the gaps with its own moves.
+- From the terminal: `python -m cortex.teach record --game my_game "collect wood"`, then
+  `python -m cortex.teach play --game my_game`.
 
-## Playing any game with Claude (agent engine)
+## Which brain plays
 
-Each turn Claude gets a screenshot and calls game tools: `hold` keys (walk, sprint, mine), `tap`,
-`look` (relative mouse movement for 3D cameras), `click`, `wait`, `note` and `finish`. All the
-tool calls in one turn run back-to-back on your Mac, so the game keeps moving while Claude thinks.
+Every game you pick gets a profile in `~/Library/Application Support/Cortex/games/` with `engine: auto`:
 
-- **Reflexes:** a profile can list screen regions plus a danger description, such as "a health bar
-  with one heart left". CLIP checks these 10 times a second and presses keys immediately.
-- **Limits:** every profile has `max_steps` and `max_cost_usd`. Cortex stops when either is reached.
-  A turn with `claude-opus-5-5` at `effort: low` typically costs about 1–3¢.
-- **Memory:** old screenshots are pruned automatically, and Claude keeps notes of its progress.
-- Profiles live in `~/Library/Application Support/Cortex/games/`. Edit the keys, tips, `effort`
-  or `look_px_per_degree` (camera sensitivity) there.
+1. With a **Gemini key**, Gemini plays, using your taught skills when they fit.
+2. Otherwise, with a **Claude key** (optional, paid, Settings → Claude), Claude plays (`cortex/agent/agent.py`).
+3. Otherwise, it plays your **taught skills**.
 
-From the terminal: `cortex-games add "Minecraft"`, then `cortex --game minecraft -a "gather wood"`.
+Add `agent.keys` (action → key) and `agent.tips` to a profile to tell the AI your game's controls.
+`cortex/profiles/generic_3d.yaml` shows every option, including CLIP **reflexes**: instant local reactions such as
+"health bar nearly empty → back off".
+
+From the terminal: `cortex-games add "My Game"`, then `GEMINI_API_KEY=... cortex --game my_game -a "collect wood"`.
+
+## Built-in example: fast 2D mode
+
+For top-down tile games, the `grid` engine needs no AI while playing. The bundled Stardew Valley profile is an
+example. MobileCLIP labels every tile in milliseconds, and a rule-based planner walks, waters and harvests.
+Assignments are turned into steps once, before the game starts.
 
 ## Give it an assignment
 
@@ -122,7 +137,7 @@ Start? Switch to the game window after pressing Enter. [Y/n]
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[all]"
-python -m cortex.app          # run the menu-bar app from source
+python -m cortex.app          # run the app from source
 ```
 
 When running from a terminal, grant your terminal app these permissions in **System Settings → Privacy & Security**:
@@ -172,13 +187,15 @@ well for normal tilesets. If the overlay's tile boxes look offset from the real 
 | `cortex/assignment.py` | Plain-English assignment → Mission (Claude, with a keyword fallback) |
 | `cortex/planner/` | Pathing (BFS), actions, farm task planner (runs missions step by step) |
 | `cortex/control/` | Quartz CGEvent input and the action → input controller |
-| `cortex/loop.py` | Main loop (grid engine), `run_agent` (agent engine), hotkeys, dry-run and recording |
-| `cortex/agent/` | Claude vision agent: game tools, action executor, CLIP reflexes |
+| `cortex/loop.py` | Runners: `run_gemini`, `run_agent` (Claude), `run_skill`, `run` (grid); hotkeys, dry-run |
+| `cortex/agent/gemini.py` | Gemini REST client and the pipelined two-speed `GeminiPilot` |
+| `cortex/agent/` | Game tools and action executor (shared by Gemini and Claude), Claude agent, CLIP reflexes |
+| `cortex/telemetry.py` | Live numbers for the window: latest frame, reaction and AI time, action log |
 | `cortex/teach/` | Teach by showing: recorder, skills (embeddings + action ticks), nearest-moment player |
-| `cortex/games.py` | "Add a game": Claude drafts a profile; `cortex-games list/add/show/windows` |
-| `cortex/app/` | Menu-bar app (`rumps`), UI-free `AppController`, permissions and Keychain |
+| `cortex/games.py` | Game profiles for open windows (`game_for_window`); `cortex-games list/add/show/windows` |
+| `cortex/app/` | The app: window UI (`ui/index.html` in pywebview), JS↔Python `bridge.py`, `menubar.py`, UI-free `AppController`, permissions and Keychain |
 | `packaging/` | PyInstaller spec, icon and entitlements for `Cortex.app` |
-| `cortex/profiles/generic_3d.yaml` | Example agent profile (a Minecraft-like 3D game) |
+| `cortex/profiles/generic_3d.yaml` | Example profile showing controls, tips and reflexes for a 3D game |
 | `cortex/profiles/stardew.yaml` | Labels/prompts, tools, tasks (with descriptions and keywords), controls, HUD for Stardew |
 | `docs/` | GitHub Pages website (`index.html`, the JS parser port `assign.mjs`, generated `tasks.json`) |
 
@@ -195,10 +212,10 @@ that touches `docs/`. Before the first deploy, enable it once in the repo's
 request that touches the app is built and self-tested, and every `v*` tag publishes a GitHub Release:
 
 ```bash
-git tag v0.2.0 && git push origin v0.2.0
+git tag v0.3.0 && git push origin v0.3.0
 ```
 
-Or, without git: **Actions → Mac app → Run workflow**, on `main`, with a `release_tag` such as `v0.2.0`.
+Or, without git: **Actions → Mac app → Run workflow**, on `main`, with a `release_tag` such as `v0.3.0`.
 The workflow creates the tag and the release.
 
 To ship **signed and notarized** builds, so there is no "Open Anyway" step, add these repository
@@ -224,4 +241,4 @@ torch, no macOS) and cover grid detection, caching, pathing, planning and input.
 - **ScreenCaptureKit** streaming capture backend.
 - Exploring beyond the visible screen, going to bed at night, refilling the watering can.
 - More bundled game profiles; a shared gallery of community profiles.
-- Faster agent turns: stream tool calls and start running them before Claude finishes the turn.
+- Stream Gemini's function calls and start the first action before the whole plan arrives.

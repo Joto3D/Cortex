@@ -13,6 +13,8 @@ from typing import Callable
 
 import numpy as np
 
+from cortex.telemetry import LIVE
+
 from .skill import FPS, Skill, Tick, shrink
 
 log = logging.getLogger(__name__)
@@ -126,6 +128,7 @@ class Recorder:
             self.log.sample()  # discard anything gathered while another app was in front
             return False
         frame = shrink(self.grab(), self.width)
+        LIVE.frame(frame)
         self.frames.append(frame)
         self.ticks.append(self.log.sample())
         return True

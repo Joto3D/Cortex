@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cortex</title>
+<style>
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f0f2f5; --line: #e2e5ea; --text: #15181d; --muted: #646b76;
+  --accent: #2f7cf6; --accent-2: #1f63d1; --good: #18a058; --warn: #d98b00; --bad: #d64545; --rec: #e5484d;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.05);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1014; --panel: #161920; --panel-2: #1d2129; --line: #272c36; --text: #eceff4; --muted: #8d95a3;
+    --accent: #4b8dff; --accent-2: #6aa1ff; --good: #35c27a; --warn: #f0a92b; --bad: #ff6b6b; --rec: #ff5a5f;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 24px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; }
+body { display: grid; grid-template-columns: 210px 1fr; user-select: none; -webkit-user-select: none; }
+input, textarea, select, button { font: inherit; color: inherit; }
+textarea, input[type=text], input[type=password] { user-select: text; -webkit-user-select: text; }
+
+/* sidebar */
+nav { background: var(--panel); border-right: 1px solid var(--line); padding: 22px 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 10px 18px; font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+.brand .logo { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, #4b8dff, #8a5cff); display: grid; place-items: center; color: #fff; font-size: 15px; }
+.tab { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--muted); font-weight: 500; border: 0; background: none; text-align: left; width: 100%; }
+.tab:hover { background: var(--panel-2); color: var(--text); }
+.tab.on { background: var(--panel-2); color: var(--text); }
+.tab .ic { width: 18px; text-align: center; }
+.tab .badge { margin-left: auto; font-size: 11px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 0 7px; color: var(--muted); }
+nav .spacer { flex: 1; }
+.pill { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 10px; background: var(--panel-2); font-size: 12.5px; color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.idle { background: var(--good); } .dot.running { background: var(--accent); animation: pulse 1.2s infinite; }
+.dot.starting, .dot.paused, .dot.learning { background: var(--warn); } .dot.error { background: var(--bad); }
+.dot.recording { background: var(--rec); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+.ver { font-size: 11px; color: var(--muted); padding: 8px 10px 0; }
+
+/* main */
+main { overflow-y: auto; padding: 28px 32px 40px; }
+.page { display: none; max-width: 980px; margin: 0 auto; }
+.page.on { display: block; }
+h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: -.02em; }
+.sub { color: var(--muted); margin: 0 0 22px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.stack { display: flex; flex-direction: column; gap: 18px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.muted { color: var(--muted); } .small { font-size: 12.5px; }
+
+button.btn { border: 1px solid var(--line); background: var(--panel-2); border-radius: 9px; padding: 8px 14px; cursor: pointer; font-weight: 500; }
+button.btn:hover { filter: brightness(1.05); }
+button.btn:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+button.rec { background: var(--rec); border-color: var(--rec); color: #fff; }
+button.big { padding: 12px 22px; font-size: 15px; font-weight: 600; border-radius: 11px; }
+button.link { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; font-weight: 500; }
+
+/* game picker */
+.games { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.game { border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 8px 10px; cursor: pointer; text-align: center; background: var(--panel); transition: border-color .12s, transform .12s; }
+.game:hover { border-color: var(--accent); transform: translateY(-1px); }
+.game.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.game img, .game .ph { width: 40px; height: 40px; border-radius: 9px; display: block; margin: 0 auto 7px; }
+.game .ph { background: var(--panel-2); display: grid; place-items: center; font-weight: 700; color: var(--muted); }
+.game .nm { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty { padding: 18px; text-align: center; color: var(--muted); border: 1.5px dashed var(--line); border-radius: 12px; }
+
+textarea { width: 100%; min-height: 76px; resize: vertical; border: 1.5px solid var(--line); border-radius: 11px; padding: 11px 12px; background: var(--panel); outline: none; }
+textarea:focus, input:focus { border-color: var(--accent); }
+input[type=text], input[type=password], select { width: 100%; border: 1.5px solid var(--line); border-radius: 9px; padding: 8px 10px; background: var(--panel); outline: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { border: 1px solid var(--line); background: var(--panel-2); border-radius: 20px; padding: 4px 11px; font-size: 12.5px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); }
+.chip.skill::before { content: "🎓 "; }
+
+.brain { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); font-size: 13px; }
+.brain b { font-weight: 600; }
+.brain.missing { background: color-mix(in srgb, var(--warn) 14%, var(--panel)); }
+
+/* live */
+.screen { aspect-ratio: 16/10; border-radius: 11px; background: #000 center/cover no-repeat; overflow: hidden; position: relative; display: grid; place-items: center; color: #9aa3b2; font-size: 13px; }
+.screen img { width: 100%; height: 100%; object-fit: contain; position: absolute; inset: 0; }
+.screen .tag { position: absolute; left: 10px; top: 10px; background: rgba(0,0,0,.55); color: #fff; border-radius: 6px; padding: 2px 8px; font-size: 11.5px; backdrop-filter: blur(6px); }
+.status { font-weight: 600; font-size: 15px; margin: 14px 0 2px; }
+.thought { color: var(--muted); font-size: 13px; min-height: 19px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0; }
+.metric { background: var(--panel-2); border-radius: 10px; padding: 9px 10px; }
+.metric .v { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.metric .v.good { color: var(--good); } .metric .v.ok { color: var(--warn); }
+.metric .k { font-size: 11px; color: var(--muted); }
+.log { font: 12px/1.6 ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted); max-height: 150px; overflow: hidden; }
+.controls { display: flex; gap: 10px; margin-top: 16px; }
+.controls .big { flex: 1; }
+kbd { font: 11.5px ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; background: var(--panel-2); }
+
+/* teach */
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.steps li { counter-increment: s; display: flex; gap: 10px; }
+.steps li::before { content: counter(s); flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--panel-2); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+.skill-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.skill-row:last-child { border-bottom: 0; }
+.skill-row .nm { flex: 1; font-weight: 500; }
+
+/* settings */
+.field { display: grid; gap: 6px; margin-bottom: 16px; }
+.field label { font-weight: 600; font-size: 13px; }
+.perm { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.perm:last-child { border-bottom: 0; }
+.perm .nm { flex: 1; } .perm .nm small { display: block; color: var(--muted); }
+.ok { color: var(--good); font-weight: 600; } .no { color: var(--bad); font-weight: 600; }
+.seg { display: inline-flex; background: var(--panel-2); border-radius: 9px; padding: 3px; gap: 3px; }
+.seg button { border: 0; background: none; padding: 6px 12px; border-radius: 7px; cursor: pointer; color: var(--muted); font-weight: 500; }
+.seg button.on { background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+details summary { cursor: pointer; color: var(--muted); font-weight: 500; }
+
+/* toast + onboarding */
+#toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(30px); opacity: 0; background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 13px; max-width: 560px; transition: .2s; pointer-events: none; z-index: 10; }
+#toast.on { opacity: 1; transform: translateX(-50%); }
+#toast.err { background: var(--bad); color: #fff; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; place-items: center; z-index: 5; backdrop-filter: blur(4px); }
+.overlay.on { display: grid; }
+.modal { width: min(560px, 92vw); background: var(--panel); border-radius: 16px; padding: 26px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.modal h1 { font-size: 21px; }
+.dots { display: flex; gap: 6px; margin-bottom: 18px; }
+.dots i { width: 26px; height: 4px; border-radius: 2px; background: var(--line); }
+.dots i.on { background: var(--accent); }
+.modal .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 22px; }
+
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand"><div class="logo">◉</div>Cortex</div>
+  <button class="tab on" data-page="play"><span class="ic">▶︎</span>Play</button>
+  <button class="tab" data-page="teach"><span class="ic">🎓</span>Teach<span class="badge" id="skillCount" hidden></span></button>
+  <button class="tab" data-page="settings"><span class="ic">⚙︎</span>Settings</button>
+  <div class="spacer"></div>
+  <div class="pill"><span class="dot idle" id="dot"></span><span id="pillText">Ready</span></div>
+  <div class="ver" id="ver"></div>
+</nav>
+
+<main>
+  <!-- PLAY -->
+  <section class="page on" id="page-play">
+    <h1>Play</h1>
+    <p class="sub">Pick your game, say what to do, press Start. <kbd>F12</kbd> stops, <kbd>F11</kbd> pauses, from inside the game.</p>
+    <div class="grid2">
+      <div class="stack">
+        <div class="card">
+          <div class="row" style="justify-content:space-between;margin-bottom:10px">
+            <h2 style="margin:0">1 · Your game</h2>
+            <button class="link small" id="refreshWindows">↻ Refresh</button>
+          </div>
+          <div class="games" id="games"></div>
+          <p class="muted small" style="margin:10px 0 0">Open your game first. Cortex plays the window you pick.</p>
+        </div>
+        <div class="card">
+          <h2>2 · What should it do?</h2>
+          <textarea id="assignment" placeholder="e.g. explore and collect wood, then come back"></textarea>
+          <div class="chips" id="chips"></div>
+        </div>
+        <div class="brain" id="brain"></div>
+      </div>
+
+      <div class="card" id="liveCard">
+        <h2>Live</h2>
+        <div class="screen" id="screen"><span id="screenHint">What Cortex sees appears here</span><span class="tag" id="brainTag" hidden></span></div>
+        <div class="status" id="status">Ready</div>
+        <div class="thought" id="thought"></div>
+        <div class="metrics">
+          <div class="metric"><div class="v" id="mReact">–</div><div class="k">reaction</div></div>
+          <div class="metric"><div class="v" id="mThink">–</div><div class="k">AI plan</div></div>
+          <div class="metric"><div class="v" id="mBusy">–</div><div class="k">hands busy</div></div>
+          <div class="metric"><div class="v" id="mTime">–</div><div class="k">time</div></div>
+        </div>
+        <div class="log" id="log"></div>
+        <div class="controls">
+          <button class="btn primary big" id="startBtn">Start</button>
+          <button class="btn big" id="pauseBtn" hidden>Pause</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TEACH -->
+  <section class="page" id="page-teach">
+    <h1>Teach by showing</h1>
+    <p class="sub">Play for a few minutes while Cortex watches. It learns to do what you did, entirely on your Mac.</p>
+    <div class="grid2">
+      <div class="card">
+        <h2>Record a skill for <span id="teachGame">your game</span></h2>
+        <div class="field">
+          <label for="skillName">Name it</label>
+          <input type="text" id="skillName" placeholder="e.g. collect wood">
+        </div>
+        <button class="btn rec big" id="recBtn" style="width:100%">⏺  Record</button>
+        <p class="muted small" id="recHint">After you press Record you have 3 seconds to switch to the game. Play normally for 2–5 minutes, then press <kbd>F12</kbd>.</p>
+        <h2 style="margin-top:22px">Skills you taught</h2>
+        <div id="skillList"></div>
+      </div>
+      <div class="card">
+        <h2>How it works</h2>
+        <ol class="steps">
+          <li><span>Cortex records the screen 10× a second, together with the keys and mouse you use.</span></li>
+          <li><span>While playing, it finds the moment in your recording that looks most like the screen now and does what you did next. This takes about 50 ms.</span></li>
+          <li><span>With a Gemini key, Gemini decides <i>which</i> skill to use and when, and fills the gaps with its own moves.</span></li>
+          <li><span>Record the same name again to add more examples. Variety helps a lot.</span></li>
+        </ol>
+        <p class="muted small" style="margin-top:14px">It only records while the game is in front, and never records ⌘ shortcuts.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="page" id="page-settings">
+    <h1>Settings</h1>
+    <p class="sub">Keys are stored in your Mac's Keychain.</p>
+    <div class="grid2">
+      <div class="stack">
+        <div class="card">
+          <h2>Gemini (free AI)</h2>
+          <div class="field">
+            <label for="geminiKey">API key <span class="muted small" id="geminiState"></span></label>
+            <input type="password" id="geminiKey" placeholder="Paste your key (starts with AIza…)">
+          </div>
+          <div class="row">
+            <button class="btn primary" id="saveGemini">Save</button>
+            <button class="btn" id="testGemini">Test</button>
+            <button class="btn" id="getKey">Get a free key ↗</button>
+          </div>
+          <p class="muted small">Free at Google AI Studio: sign in, click “Create API key”, paste it here. It takes about a minute and needs no card.</p>
+          <div class="field" style="margin-top:14px">
+            <label>Model</label>
+            <div class="seg" id="modelSeg"><button data-v="fast">Fastest (Flash-Lite)</button><button data-v="smart">Smarter (Flash)</button></div>
+          </div>
+          <div class="field">
+            <label for="rpm">Requests per minute <span class="muted small" id="rpmVal"></span></label>
+            <input type="range" id="rpm" min="4" max="30" step="1">
+            <span class="muted small">The free tier allows about 15 per minute. More requests mean faster corrections. Between requests, Cortex keeps playing.</span>
+          </div>
+        </div>
+        <div class="card">
+          <details>
+            <summary>Claude (optional, paid)</summary>
+            <div class="field" style="margin-top:12px">
+              <label for="claudeKey">Claude API key <span class="muted small" id="claudeState"></span></label>
+              <input type="password" id="claudeKey" placeholder="sk-ant-…">
+            </div>
+            <div class="row"><button class="btn" id="saveClaude">Save</button><button class="link" id="claudeLink">Get a key ↗</button></div>
+            <p class="muted small">Only used if there's no Gemini key.</p>
+          </details>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <h2>Permissions</h2>
+          <div id="perms"></div>
+          <p class="muted small">After turning one on, quit and reopen Cortex if it still shows as off.</p>
+        </div>
+        <div class="card">
+          <h2>Playing</h2>
+          <div class="field">
+            <label for="delay">Countdown before starting <span class="muted small" id="delayVal"></span></label>
+            <input type="range" id="delay" min="0" max="10" step="1">
+          </div>
+          <div class="row">
+            <button class="btn" data-folder="games">Games folder</button>
+            <button class="btn" data-folder="log">Show log</button>
+            <button class="btn" data-link="updates">Check for updates</button>
+            <button class="btn" data-link="website">Website</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- first-run -->
+<div class="overlay" id="onboard">
+  <div class="modal">
+    <div class="dots"><i></i><i></i><i></i></div>
+    <div id="ob1">
+      <h1>Welcome to Cortex</h1>
+      <p class="muted">Cortex plays games on your Mac for you. Tell it what to do, or teach it by playing. First it needs permission to see the game and press keys.</p>
+      <div id="obPerms"></div>
+    </div>
+    <div id="ob2" hidden>
+      <h1>Free AI brain (optional)</h1>
+      <p class="muted">With a free Google Gemini key, Cortex understands any game and any instruction. Without one, it can still copy what you teach it.</p>
+      <div class="row" style="margin:14px 0"><button class="btn" id="obGetKey">1. Get a free key ↗</button></div>
+      <input type="password" id="obKey" placeholder="2. Paste it here">
+    </div>
+    <div id="ob3" hidden>
+      <h1>You're ready</h1>
+      <ol class="steps">
+        <li><span>Open your game and pick it on the <b>Play</b> page.</span></li>
+        <li><span>Type what it should do, then press <b>Start</b>.</span></li>
+        <li><span>Switch to the game. Cortex starts after a 3-second countdown.</span></li>
+        <li><span>Press <kbd>F12</kbd> to stop or <kbd>F11</kbd> to pause, any time.</span></li>
+      </ol>
+      <p class="muted small" style="margin-top:14px">Only use Cortex in single-player or offline games.</p>
+    </div>
+    <div class="foot">
+      <button class="link" id="obSkip">Skip</button>
+      <button class="btn primary" id="obNext">Next</button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+let api = null, S = null, lastFrame = -1, windowsCache = [];
+
+function esc(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function toast(msg, err) {
+  const t = $("#toast"); t.textContent = msg; t.className = "on" + (err ? " err" : "");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.className = "", err ? 6000 : 2800);
+}
+async function call(name, ...args) {
+  try {
+    const r = await api[name](...args);
+    if (r && r.ok === false) { toast(r.error, true); return null; }
+    return r;
+  } catch (e) { toast(String(e), true); return null; }
+}
+
+// navigation
+$$(".tab").forEach(b => b.onclick = () => show(b.dataset.page));
+function show(page) {
+  $$(".tab").forEach(b => b.classList.toggle("on", b.dataset.page === page));
+  $$(".page").forEach(p => p.classList.toggle("on", p.id === "page-" + page));
+  if (page === "settings") loadPerms();
+}
+
+// games
+async function loadWindows() {
+  const r = await call("windows");
+  if (!r) return;
+  windowsCache = r.windows;
+  renderGames();
+}
+function renderGames() {
+  const box = $("#games");
+  const cur = S ? S.game_title : "";
+  const list = [...windowsCache];
+  if (cur && !list.some(w => w.name === cur)) list.unshift({ name: cur, icon: null, closed: true });
+  if (!list.length) { box.innerHTML = '<div class="empty" style="grid-column:1/-1">No open windows found. Open your game, then press Refresh.</div>'; return; }
+  box.innerHTML = list.map(w => `
+    <div class="game ${w.name === cur ? "on" : ""}" data-name="${esc(w.name)}" title="${esc(w.name)}">
+      ${w.icon ? `<img src="${w.icon}" alt="">` : `<div class="ph">${esc(w.name.slice(0, 1).toUpperCase())}</div>`}
+      <div class="nm">${esc(w.name)}</div>${w.closed ? '<div class="muted small">not open</div>' : ""}
+    </div>`).join("");
+  $$(".game").forEach(g => g.onclick = async () => {
+    if (S && S.mode !== "idle" && S.mode !== "error") return toast("Stop Cortex before switching games.", true);
+    if (await call("pick_window", g.dataset.name)) { await refresh(); renderGames(); toast(`Playing ${g.dataset.name}`); }
+  });
+}
+$("#refreshWindows").onclick = loadWindows;
+
+// assignment
+let typing = false;
+$("#assignment").addEventListener("focus", () => typing = true);
+$("#assignment").addEventListener("blur", () => { typing = false; call("set_assignment", $("#assignment").value); });
+
+function renderChips() {
+  const seen = new Set(), out = [];
+  const add = (t, cls) => { if (t && !seen.has(t)) { seen.add(t); out.push(`<span class="chip ${cls}" data-t="${esc(t)}">${esc(t)}</span>`); } };
+  S.skills.forEach(t => add(t, "skill")); S.recent.forEach(t => add(t, "")); S.ideas.forEach(t => add(t, ""));
+  const html = out.slice(0, 10).join("");
+  if ($("#chips").innerHTML !== html) {
+    $("#chips").innerHTML = html;
+    $$(".chip").forEach(c => c.onclick = () => { $("#assignment").value = c.dataset.t; call("set_assignment", c.dataset.t); });
+  }
+}
+
+function renderBrain() {
+  const b = $("#brain");
+  const names = { gemini: ["✨", "Gemini (free)", S.skills.length ? `plans what to do, and uses your ${S.skills.length} taught skill(s) for instant moves` : "looks at the game and plans the next few seconds, while your keys keep moving"],
+                  claude: ["🧠", "Claude", "plans each move carefully (paid)"],
+                  skills: ["🎓", "Taught skills", "copies what you showed it. Add a free Gemini key so it understands any instruction"],
+                  grid: ["⚡", "Fast 2D mode", "built-in farming routines"] };
+  let html;
+  if (!S.game) html = `<span>👆</span><span>Pick your game above to begin.</span>`;
+  else if (!S.brain) html = `<span>⚠️</span><span>Cortex needs a brain for this game. <button class="link" onclick="show('settings')">Add a free Gemini key</button> or <button class="link" onclick="show('teach')">teach it</button>.</span>`;
+  else { const [i, n, d] = names[S.brain]; html = `<span>${i}</span><span><b>${n}</b>: ${d}.</span>`; }
+  b.className = "brain" + (S.game && !S.brain ? " missing" : "");
+  if (b.innerHTML !== html) b.innerHTML = html;
+}
+
+function fmtMs(v, good, ok) {
+  if (v == null) return ["–", ""];
+  return [v >= 1000 ? (v / 1000).toFixed(1) + " s" : v + " ms", v <= good ? "good" : v <= ok ? "ok" : ""];
+}
+
+function renderLive() {
+  const L = S.live, busy = ["starting", "running", "paused", "recording", "learning"].includes(S.mode);
+  $("#status").textContent = S.status + (S.elapsed ? "" : "");
+  $("#thought").textContent = busy ? (L.thought || "") : (S.last_result || "");
+  const [rv, rc] = fmtMs(L.reaction_ms, 120, 250); $("#mReact").textContent = rv; $("#mReact").className = "v " + rc;
+  const [tv, tc] = fmtMs(L.think_ms, 1200, 2500); $("#mThink").textContent = tv; $("#mThink").className = "v " + tc;
+  $("#mBusy").textContent = L.busy_pct == null ? "–" : L.busy_pct + "%";
+  $("#mTime").textContent = S.elapsed || "–";
+  const logHtml = L.log.map(esc).join("<br>");
+  if ($("#log").innerHTML !== logHtml) $("#log").innerHTML = logHtml;
+  const tag = $("#brainTag"); tag.hidden = !L.brain || !busy; tag.textContent = L.brain;
+
+  const start = $("#startBtn"), pause = $("#pauseBtn");
+  if (S.mode === "recording" || S.mode === "learning") { start.textContent = S.mode === "learning" ? "Learning…" : "Stop recording"; start.className = "btn rec big"; start.disabled = S.mode === "learning"; }
+  else if (busy) { start.textContent = "Stop"; start.className = "btn danger big"; start.disabled = false; }
+  else { start.textContent = "Start"; start.className = "btn primary big"; start.disabled = !S.game || !S.brain; }
+  pause.hidden = !(S.mode === "running" || S.mode === "paused");
+  pause.textContent = S.mode === "paused" ? "Resume" : "Pause";
+}
+
+$("#startBtn").onclick = async () => {
+  if (S.mode === "recording") return call("stop_recording");
+  if (["starting", "running", "paused"].includes(S.mode)) return call("stop");
+  const text = $("#assignment").value.trim();
+  if (!text && S.brain !== "skills" && S.brain !== "grid") { $("#assignment").focus(); return toast("Tell Cortex what to do first.", true); }
+  if (await call("start", text)) toast(`Switch to ${S.game_title} now`);
+};
+$("#pauseBtn").onclick = () => call("pause");
+
+async function pollFrame() {
+  if (!S || S.live.frame_id === lastFrame) return;
+  lastFrame = S.live.frame_id;
+  const r = await call("frame");
+  if (r && r.src) {
+    let img = $("#screen img");
+    if (!img) { img = document.createElement("img"); $("#screen").prepend(img); $("#screenHint").hidden = true; }
+    img.src = r.src;
+  }
+}
+
+// teach
+function renderTeach() {
+  $("#teachGame").textContent = S.game_title || "your game";
+  const rec = $("#recBtn");
+  if (S.mode === "recording") { rec.textContent = "■  Stop recording (F12)"; rec.disabled = false; }
+  else if (S.mode === "learning") { rec.textContent = "Learning…"; rec.disabled = true; }
+  else { rec.textContent = "⏺  Record"; rec.disabled = !S.game || S.mode !== "idle" && S.mode !== "error"; }
+  const html = S.skills.length ? S.skills.map(n => `<div class="skill-row"><span class="nm">🎓 ${esc(n)}</span>
+      <button class="btn" data-play="${esc(n)}">Play</button><button class="link" data-del="${esc(n)}" style="color:var(--bad)">Delete</button></div>`).join("")
+    : `<p class="muted small">${S.game ? "Nothing yet. Record your first skill above." : "Pick your game on the Play page first."}</p>`;
+  if ($("#skillList").innerHTML !== html) {
+    $("#skillList").innerHTML = html;
+    $$("[data-play]").forEach(b => b.onclick = async () => { $("#assignment").value = b.dataset.play; await call("set_assignment", b.dataset.play); show("play"); });
+    $$("[data-del]").forEach(b => b.onclick = async () => { if (confirm(`Delete “${b.dataset.del}”?`)) { await call("delete_skill", b.dataset.del); refresh(); } });
+  }
+  const c = $("#skillCount"); c.hidden = !S.skills.length; c.textContent = S.skills.length;
+}
+$("#recBtn").onclick = async () => {
+  if (S.mode === "recording") return call("stop_recording");
+  const name = $("#skillName").value.trim();
+  if (!name) { $("#skillName").focus(); return toast("Give the skill a name first.", true); }
+  if (await call("record", name)) toast(`Switch to ${S.game_title} and play. Press F12 when done.`);
+};
+
+// settings
+async function loadPerms(target = "#perms") {
+  const r = await call("permissions"); if (!r) return;
+  const rows = [["screen", "Screen Recording", "to see the game", r.screen], ["accessibility", "Accessibility", "to press keys and move the mouse", r.accessibility],
+                ["input", "Input Monitoring", "for the F12 / F11 hotkeys and recording", null]];
+  $(target).innerHTML = rows.map(([k, n, why, v]) => `<div class="perm"><span class="nm">${n}<small>${why}</small></span>
+    ${v === true ? '<span class="ok">✓ On</span>' : `${v === false ? '<span class="no">Off</span>' : ""}<button class="btn" data-perm="${k}">Open</button>`}</div>`).join("");
+  $$(`${target} [data-perm]`).forEach(b => b.onclick = () => call("open_permission", b.dataset.perm));
+}
+function renderSettings() {
+  $("#geminiState").textContent = S.has_gemini ? "· saved ✓" : "· not set";
+  $("#claudeState").textContent = S.has_claude ? "· saved ✓" : "";
+  $$("#modelSeg button").forEach(b => b.classList.toggle("on", b.dataset.v === S.gemini_model));
+  if (document.activeElement !== $("#rpm")) $("#rpm").value = S.gemini_rpm;
+  $("#rpmVal").textContent = `· ${Math.round(S.gemini_rpm)} (one plan every ${(60 / S.gemini_rpm).toFixed(1)} s)`;
+  if (document.activeElement !== $("#delay")) $("#delay").value = S.start_delay_s;
+  $("#delayVal").textContent = `· ${S.start_delay_s} s`;
+}
+$("#saveGemini").onclick = async () => {
+  const k = $("#geminiKey").value.trim(); if (!k) return toast("Paste your key first.", true);
+  if (await call("save_key", "gemini", k)) { $("#geminiKey").value = ""; toast("Saved. Testing…"); testKey(); refresh(); }
+};
+async function testKey() { const r = await call("test_key"); if (r) toast(r.message); }
+$("#testGemini").onclick = testKey;
+$("#getKey").onclick = () => call("open_link", "gemini_key");
+$("#saveClaude").onclick = async () => { if (await call("save_key", "anthropic", $("#claudeKey").value)) { $("#claudeKey").value = ""; toast("Saved."); refresh(); } };
+$("#claudeLink").onclick = () => call("open_link", "claude_key");
+$$("#modelSeg button").forEach(b => b.onclick = async () => { await call("set_option", "gemini_model", b.dataset.v); refresh(); });
+$("#rpm").onchange = async (e) => { await call("set_option", "gemini_rpm", +e.target.value); refresh(); };
+$("#delay").onchange = async (e) => { await call("set_option", "start_delay_s", +e.target.value); refresh(); };
+$$("[data-folder]").forEach(b => b.onclick = () => call("open_folder", b.dataset.folder));
+$$("[data-link]").forEach(b => b.onclick = () => call("open_link", b.dataset.link));
+
+// onboarding
+let obStep = 1;
+function obShow() {
+  [1, 2, 3].forEach(i => $("#ob" + i).hidden = i !== obStep);
+  $$(".dots i").forEach((d, i) => d.classList.toggle("on", i < obStep));
+  $("#obNext").textContent = obStep === 3 ? "Let's play" : obStep === 2 ? ($("#obKey").value.trim() ? "Save key" : "Next") : "Next";
+}
+$("#obKey").oninput = obShow;
+$("#obGetKey").onclick = () => call("open_link", "gemini_key");
+async function obDone() { $("#onboard").classList.remove("on"); await call("finish_setup"); loadWindows(); }
+$("#obSkip").onclick = obDone;
+$("#obNext").onclick = async () => {
+  if (obStep === 2 && $("#obKey").value.trim()) { if (!await call("save_key", "gemini", $("#obKey").value.trim())) return; testKey(); }
+  if (obStep === 3) return obDone();
+  obStep++; obShow();
+};
+
+// main loop
+const pill = { idle: "Ready", starting: "Starting…", running: "Playing", paused: "Paused", recording: "Recording", learning: "Learning…", error: "Error" };
+async function refresh() {
+  const r = await call("state"); if (!r) return;
+  const firstGameLoad = !S;
+  S = r;
+  $("#ver").textContent = "Cortex " + S.version;
+  $("#dot").className = "dot " + S.mode;
+  $("#pillText").textContent = pill[S.mode] + (S.elapsed ? " · " + S.elapsed : "");
+  if (!typing && document.activeElement !== $("#assignment") && $("#assignment").value !== S.assignment) $("#assignment").value = S.assignment;
+  renderChips(); renderBrain(); renderLive(); renderTeach(); renderSettings();
+  if (firstGameLoad) renderGames();
+  pollFrame();
+}
+
+async function init() {
+  api = window.pywebview.api;
+  await refresh();
+  loadWindows();
+  if (!S.setup_done) { $("#onboard").classList.add("on"); obShow(); loadPerms("#obPerms"); }
+  setInterval(refresh, 400);
+  setInterval(() => { if (S && S.mode === "idle") loadWindows(); }, 8000);
+}
+if (window.pywebview && window.pywebview.api) init();
+else window.addEventListener("pywebviewready", init);
+</script>
+</body>
+</html>

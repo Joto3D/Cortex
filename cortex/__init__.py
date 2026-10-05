@@ -1,3 +1,3 @@
-"""Cortex: a CLIP-powered bot that plays single-player farming sims."""
+"""Cortex: plays single-player games on your Mac for you (Gemini + fast local CLIP vision)."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

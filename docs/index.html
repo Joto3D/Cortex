@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cortex Game Bot</title>
-<meta name="description" content="A free Mac app that plays single-player games for you. Tell it what to do in plain English; it watches the screen and plays with keyboard and mouse.">
+<meta name="description" content="A free Mac app that plays single-player games for you. Pick your game, say what to do, and it plays with keyboard and mouse. Free AI with a Gemini key, or teach it by playing.">
 <meta property="og:title" content="Cortex: tell it what to do, it plays the game">
-<meta property="og:description" content="A free Mac app that plays single-player games for you, from farming sims to 3D sandboxes.">
+<meta property="og:description" content="A free Mac app that plays single-player games for you, 2D or 3D. Free Gemini AI, fast local reactions, or teach it by showing.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232f6b3a'/><path d='M16 25V13M16 17c-4 0-7-3-7-7 4 0 7 3 7 7zm0-2c0-4 3-7 7-7 0 4-3 7-7 7z' stroke='%23e9f5d0' stroke-width='2.2' fill='none' stroke-linecap='round'/></svg>">
 <style>
   :root {
@@ -115,7 +115,7 @@
   .desk {
     position: relative; border-radius: 18px; overflow: hidden; box-shadow: var(--shadow-lg);
     background: radial-gradient(120% 90% at 10% 0%, var(--desk-a), transparent 60%), radial-gradient(90% 90% at 100% 100%, var(--desk-b), transparent 60%), var(--surface-2);
-    border: 1px solid var(--border); padding-bottom: 84px;
+    border: 1px solid var(--border); padding-bottom: 0; height: 380px;
   }
   .menubar {
     height: 30px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 0 14px;
@@ -143,6 +143,29 @@
 
   /* cards & grids */
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .appwin { position: absolute; inset: 34px 18px 18px; background: var(--surface); border-radius: 12px; box-shadow: var(--shadow-lg); border: 1px solid var(--border); overflow: hidden; display: grid; grid-template-rows: 28px 1fr; }
+  .appwin .bar { display: flex; align-items: center; gap: 6px; padding: 0 10px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-size: .72rem; color: var(--muted); }
+  .appwin .bar i { width: 10px; height: 10px; border-radius: 50%; background: #ff5f57; display: inline-block; }
+  .appwin .bar i:nth-child(2) { background: #febc2e; } .appwin .bar i:nth-child(3) { background: #28c840; margin-right: 8px; }
+  .appwin .body { display: grid; grid-template-columns: 1fr 1.15fr; gap: 10px; padding: 12px; font-size: .74rem; min-height: 0; }
+  .appwin .pane { background: var(--surface-2); border-radius: 9px; padding: 9px; display: grid; gap: 7px; align-content: start; min-width: 0; }
+  .appwin .lab { font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .appwin .gm { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .appwin .gm span { border: 1.5px solid var(--border); border-radius: 7px; padding: 5px; text-align: center; background: var(--surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .appwin .gm span.on { border-color: var(--accent); }
+  .appwin .ask { background: var(--surface); border: 1.5px solid var(--border); border-radius: 7px; padding: 6px; }
+  .appwin .scr { aspect-ratio: 16/10; border-radius: 7px; background: linear-gradient(#7ec8ff, #bfe6ff 55%, #4caf50 56%, #2e7d32); position: relative; }
+  .appwin .scr b { position: absolute; left: 6px; top: 6px; background: rgba(0,0,0,.55); color: #fff; border-radius: 4px; padding: 1px 6px; font-size: .62rem; font-weight: 500; }
+  .appwin .met { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .appwin .met span { background: var(--surface); border-radius: 6px; padding: 4px 5px; color: var(--muted); font-size: .6rem; }
+  .appwin .met b { display: block; font-size: .85rem; color: var(--accent); }
+  .appwin .stop { background: #e5484d; color: #fff; text-align: center; border-radius: 7px; padding: 6px; font-weight: 600; }
+  .lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 28px; }
+  @media (max-width: 760px) { .lanes { grid-template-columns: 1fr; } }
+  @media (max-width: 560px) { .desk { height: 330px; } .appwin .body { grid-template-columns: 1fr; } .appwin .body .pane:first-child { display: none; } }
+  .lane { padding: 22px; }
+  .lane .big-num { font-size: 2rem; font-weight: 800; letter-spacing: -.03em; color: var(--accent); }
+  .lane p { color: var(--muted); margin: 6px 0 0; }
   .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 28px; }
   .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 28px; }
   @media (max-width: 900px) { .grid3, .grid4 { grid-template-columns: 1fr 1fr; } }
@@ -236,7 +259,7 @@
     </a>
     <div class="links">
       <a href="#features" class="hide-sm">Features</a>
-      <a href="#try" class="hide-sm">Try it</a>
+      <a href="#how" class="hide-sm">How it works</a>
       <a href="#faq" class="hide-sm">FAQ</a>
       <a href="https://github.com/Joto3D/Cortex" class="hide-sm">GitHub</a>
       <a class="btn primary" href="#download">Download</a>
@@ -250,36 +273,38 @@
       <div>
         <div class="eyebrow">Free Mac app · open source</div>
         <h1>Tell it what to do. <em>It plays the game.</em></h1>
-        <p class="lead">Cortex plays single-player games for you, from cosy farming sims to 3D sandboxes. Type an
-          assignment like <q>harvest everything, then water the crops</q> and it watches the screen and plays
-          with the keyboard and mouse, like a person would.</p>
+        <p class="lead">Cortex plays single-player games for you, 2D or 3D. Pick your game's window, type something like
+          <q>explore and collect wood</q>, and press Start. A <b>free</b> Gemini AI plans what to do, and your Mac
+          moves the keys and mouse instantly, like a person would.</p>
         <div class="cta">
           <a class="btn primary big js-dl" href="https://github.com/Joto3D/Cortex/releases/latest/download/Cortex.dmg">
             <svg aria-hidden="true"><use href="#i-download"/></svg><span class="js-dl-label">Download for Mac</span>
           </a>
-          <a class="btn big" href="#try">Try an assignment</a>
+          <a class="btn big" href="#how">How it works</a>
         </div>
-        <p class="meta"><span class="js-version">v0.1.0</span> · <span class="js-size">about 240 MB</span> · Apple Silicon · macOS 13 or later · <a href="#install">How to install</a></p>
+        <p class="meta"><span class="js-version">v0.3.0</span> · <span class="js-size">about 240 MB</span> · Apple Silicon · macOS 13 or later · <a href="#install">How to install</a></p>
       </div>
 
-      <div class="desk" role="img" aria-label="The Cortex menu in the Mac menu bar while it plays Stardew Valley. The status reads Playing Stardew Valley, 2:14, step 2 of 2, water the crops, with Pause and Stop available.">
+      <div class="desk" role="img" aria-label="The Cortex app window while it plays a game: the game is picked, the task reads explore and collect wood, a live view shows the game, reaction 46 milliseconds, AI plan 0.8 seconds, and a Stop button.">
         <div class="menubar" aria-hidden="true"><span>Wi‑Fi</span><span class="icon">▶︎</span><span>Sun 9:41</span></div>
-        <div class="menu" aria-hidden="true">
-          <div class="mi mstatus"><span>Playing Stardew Valley</span><span class="k">2:14</span></div>
-          <div class="mi dim"><span>F12 stops · F11 pauses</span></div>
-          <div class="msep"></div>
-          <div class="mi"><span>Game: Stardew Valley</span><span class="k">▸</span></div>
-          <div class="mi"><span>Assignment: harvest everything, then water</span><span class="k">▸</span></div>
-          <div class="msep"></div>
-          <div class="mi dim"><span>Start</span><span class="k">⌘S</span></div>
-          <div class="mi sel"><span>Pause</span><span class="k">⌘P</span></div>
-          <div class="mi"><span>Stop</span><span class="k">⌘.</span></div>
-          <div class="msep"></div>
-          <div class="mi"><span>Setup…</span><span class="k">⌘,</span></div>
-          <div class="mi"><span>Show log</span></div>
-          <div class="mi"><span>Quit Cortex</span><span class="k">⌘Q</span></div>
+        <div class="appwin" aria-hidden="true">
+          <div class="bar"><i></i><i></i><i></i>Cortex</div>
+          <div class="body">
+            <div class="pane">
+              <div class="lab">Your game</div>
+              <div class="gm"><span class="on">Your game</span><span>Another game</span></div>
+              <div class="lab">What should it do?</div>
+              <div class="ask">explore and collect wood, then come back</div>
+              <div class="lab" style="color:var(--accent)">✨ Gemini (free)</div>
+            </div>
+            <div class="pane">
+              <div class="scr"><b>Gemini (free)</b></div>
+              <div><b>Playing</b> · hold w 1.5s → look +20° → collect wood</div>
+              <div class="met"><span><b>46 ms</b>reaction</span><span><b>0.8 s</b>AI plan</span><span><b>97%</b>hands busy</span></div>
+              <div class="stop">Stop</div>
+            </div>
+          </div>
         </div>
-        <div class="game-tag" aria-hidden="true"><span class="dot"></span><span><b>Step 2 of 2: watering crops</b> · switch away and it pauses</span></div>
       </div>
     </div>
   </header>
@@ -291,63 +316,60 @@
       <p class="muted">Cortex picks the right way to play for each game, so there's nothing to configure.</p>
       <div class="grid3">
         <div class="card feature">
-          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-pulse"/></svg></span>Teach it any game, no key</h3>
-          <p>Press <b>Record</b>, play for a few minutes, then press <kbd>F12</kbd>. Cortex repeats what you showed it, in any
-            game, entirely on your Mac. No API key and no extra downloads.</p>
+          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-eye"/></svg></span>Free AI that understands any game</h3>
+          <p>Add a free Google Gemini key (one minute, no card). Gemini looks at the game and plans the next few seconds:
+            walk there, look around, open the menu, use that item.</p>
         </div>
         <div class="card feature">
-          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-chat"/></svg></span>Plain-English assignments</h3>
-          <p>Type what you want done, like <q>break 5 rocks, then water</q> or the name of a skill you taught. Cortex turns it
-            into steps and tells you if something isn't possible.</p>
+          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-bolt"/></svg></span>Reacts in milliseconds</h3>
+          <p>Keys and mouse never wait for the internet. Cortex asks Gemini for the next plan <i>while</i> it's still playing
+            the current one, and fast moves you taught it run on your Mac in about 50 ms.</p>
         </div>
         <div class="card feature">
-          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-bolt"/></svg></span>Fast mode for 2D games</h3>
-          <p>In top-down tile games like Stardew Valley, a vision model reads every tile in milliseconds, so the bot walks,
-            waters and harvests at human speed.</p>
+          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-pulse"/></svg></span>Teach it by playing</h3>
+          <p>Press <b>Record</b>, play for a few minutes, then press <kbd>F12</kbd>. Cortex repeats what you showed it. It works
+            fully offline, with no key at all, and Gemini can call your skills when they fit.</p>
         </div>
         <div class="card feature">
-          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-eye"/></svg></span>Optional: thinking mode</h3>
-          <p>With a Claude API key, Claude can look at the screen and play games it has never seen, working out new situations
-            by itself. It takes a few seconds per decision.</p>
+          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-chat"/></svg></span>Just say what to do</h3>
+          <p>Type it the way you'd tell a friend: <q>follow the river and find a village</q>, <q>mine until the bag is full</q>.
+            The live view shows what Cortex sees and plans.</p>
         </div>
         <div class="card feature">
-          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-plus"/></svg></span>Add a game in one click</h3>
-          <p>Open any game and choose <b>Add a game…</b>, then teach it. With an API key, Claude also writes down the game's
-            controls, tips and dangers to watch for.</p>
+          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-plus"/></svg></span>Any game, no setup</h3>
+          <p>Open your game, click its window in Cortex, done. There's no game list to pick from and nothing to configure.
+            2D or 3D, it plays the window you choose.</p>
         </div>
         <div class="card feature">
           <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-shield"/></svg></span>You stay in control</h3>
-          <p><kbd>F12</kbd> stops Cortex and <kbd>F11</kbd> pauses it. It also pauses when you switch windows, and it stops at a
-            spending limit you set.</p>
+          <p><kbd>F12</kbd> stops Cortex and <kbd>F11</kbd> pauses it from inside the game. It also pauses when you switch to
+            another window.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <section id="try" aria-labelledby="try-h">
+  <section id="how" aria-labelledby="how-h">
     <div class="wrap">
-      <div class="eyebrow">Try it here</div>
-      <h2 id="try-h">Give it an assignment</h2>
-      <p class="muted">Type what you'd want done in Stardew Valley and see the plan Cortex would follow. This page uses Cortex's
-        simple offline parser. The app asks Claude, so it understands much looser phrasing.</p>
-      <div class="card demo">
-        <div>
-          <label class="lbl" for="assignment">What should Cortex do?</label>
-          <textarea id="assignment" spellcheck="false">Harvest everything, then water the crops and break 5 rocks</textarea>
-          <div class="chips" role="group" aria-label="Example assignments">
-            <button class="chip" type="button">Water my plants first, then pick the ripe ones</button>
-            <button class="chip" type="button">Do all the chores</button>
-            <button class="chip" type="button">Chop twelve sticks then mow the weeds</button>
-            <button class="chip" type="button">Clear the rocks and feed the chickens</button>
-          </div>
+      <div class="eyebrow">How it works</div>
+      <h2 id="how-h">Two speeds, so it never waits</h2>
+      <p class="muted">A cloud AI takes about a second to answer, which is too slow to steer every keypress. So Cortex splits the work.</p>
+      <div class="lanes">
+        <div class="card lane">
+          <div class="big-num">~50 ms</div>
+          <h3>Hands: on your Mac</h3>
+          <p>Holds keys, turns the camera and clicks back-to-back. Skills you taught run here too: a small vision model
+            (MobileCLIP) recognises the screen and does what you did, about 10 times a second.</p>
         </div>
-        <div class="out" aria-live="polite">
-          <h3>Plan</h3>
-          <div id="plan"><p class="empty">Loading tasks…</p></div>
-          <h3 style="margin-top:16px">From the terminal</h3>
-          <pre id="cmd"></pre>
+        <div class="card lane">
+          <div class="big-num">~1 s</div>
+          <h3>Brain: Gemini, in parallel</h3>
+          <p>Every few seconds Cortex sends one screenshot to Gemini, which plans the next few seconds of moves. The request
+            goes out <i>before</i> the current plan runs out, so the new plan is ready when it's needed.</p>
         </div>
       </div>
+      <p class="muted" style="margin-top:18px;font-size:.92rem">The free Gemini tier allows about 15 requests a minute. Cortex stays under
+        that by itself, and it keeps playing while it waits.</p>
     </div>
   </section>
 
@@ -357,16 +379,16 @@
       <h2 id="download-h">Get Cortex for Mac</h2>
       <div class="card download">
         <div>
-          <h3>Cortex <span class="js-version">v0.1.0</span></h3>
+          <h3>Cortex <span class="js-version">v0.3.0</span></h3>
           <ul class="facts">
             <li><b>Mac with Apple Silicon</b> (M1 or newer)</li>
             <li><b>macOS 13</b> or later</li>
             <li>Download size <b class="js-size">about 240 MB</b></li>
             <li>Released <b class="js-date">Oct 4, 2026</b></li>
           </ul>
-          <p class="muted" style="margin:12px 0 0;font-size:.92rem">Free and open source. <b>No API key needed</b>:
-            Stardew's fast mode and teaching by showing run entirely on your Mac. A
-            <a href="https://console.anthropic.com/">Claude API key</a> is optional and adds thinking mode and looser phrasing of assignments.</p>
+          <p class="muted" style="margin:12px 0 0;font-size:.92rem">Free and open source. For the AI brain, get a
+            <a href="https://aistudio.google.com/apikey">free Gemini key</a> (about a minute, no card). No key? Teach it
+            by playing; that runs entirely on your Mac.</p>
           <div class="sha js-sha" hidden></div>
         </div>
         <div style="display:grid;gap:10px;justify-items:start">
@@ -392,12 +414,12 @@
         <div class="card step">
           <div class="n">3</div>
           <h3>Follow the setup</h3>
-          <p>A 🌱 appears in the menu bar and setup starts. Allow Screen Recording, Accessibility and Input Monitoring. An API key is optional.</p>
+          <p>Allow Screen Recording, Accessibility and Input Monitoring. Then paste your free Gemini key (optional).</p>
         </div>
         <div class="card step">
           <div class="n">4</div>
           <h3>Play</h3>
-          <p>Pick a game and an assignment, press <b>Start</b> (<kbd>⌘S</kbd>) and switch to the game. <kbd>F12</kbd> stops it.</p>
+          <p>Open your game, click its window in Cortex, type what to do, press <b>Start</b> and switch to the game. <kbd>F12</kbd> stops it.</p>
         </div>
       </div>
       <p class="callout"><b>Why the "Open Anyway" step?</b> Apple only skips that warning for apps signed with a paid developer
@@ -406,42 +428,28 @@
     </div>
   </section>
 
-  <section id="how" aria-labelledby="how-h">
-    <div class="wrap">
-      <div class="eyebrow">Under the hood</div>
-      <h2 id="how-h">How fast mode keeps up</h2>
-      <p class="muted">In 2D tile games, Claude reads your assignment once, before the game starts. Everything after that runs on
-        your Mac in a tight loop.</p>
-      <div class="grid4">
-        <div class="card stage"><div class="num">1 · Capture</div><h3>Watch the game</h3><p>Grabs the game window many times a second.</p><span class="time">~8 ms</span></div>
-        <div class="card stage"><div class="num">2 · Perceive</div><h3>Understand the screen</h3><p>MobileCLIP labels each tile from descriptions like <q>a sprout on dry soil</q>. Tiles it has already seen are remembered.</p><span class="time">~2 ms warm</span></div>
-        <div class="card stage"><div class="num">3 · Plan</div><h3>Pick the next job</h3><p>Follows your assignment step by step and finds the shortest walk to the next target.</p><span class="time">&lt;1 ms</span></div>
-        <div class="card stage"><div class="num">4 · Act</div><h3>Play like a human</h3><p>Holds movement keys, picks the tool and clicks, with small random timing.</p><span class="time">~1 ms</span></div>
-      </div>
-    </div>
-  </section>
-
-  <section id="faq" class="band" aria-labelledby="faq-h">
+  <section id="faq" aria-labelledby="faq-h">
     <div class="wrap">
       <div class="eyebrow">Questions</div>
       <h2 id="faq-h">Good to know</h2>
       <div class="faq">
         <details>
           <summary>Which games does it work with?</summary>
-          <p>Any game that runs in a window on your Mac. Stardew Valley is built in with a fast mode. For any other game, add it
-            from the menu and <b>teach it by showing</b>: record yourself playing and Cortex repeats it, with no API key. With a
-            Claude API key you can also use thinking mode, which works out new situations on its own.</p>
+          <p>Any single-player game that runs in a window on your Mac, 2D or 3D. Open it, click its window in Cortex, and say
+            what to do. Games that need split-second precision, like fast shooters or rhythm games, work best with skills you
+            teach it, because those react on your Mac.</p>
         </details>
         <details>
-          <summary>How much does the Claude API cost?</summary>
-          <p>Understanding an assignment is one small request, a fraction of a cent. In thinking mode each decision is one
-            request, roughly 1–3¢. Every game has a spending limit (default $3 per run), and Cortex stops when it's reached.</p>
+          <summary>Is it really free? How do I get the Gemini key?</summary>
+          <p>Yes. Go to <a href="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>, sign in with a Google
+            account, click <b>Create API key</b>, and paste it into Cortex's Settings. The free tier allows about 15 requests a minute and
+            1,000 a day, roughly an hour of play at the default pace. Lower the requests per minute in Settings to play longer.</p>
         </details>
         <details>
           <summary>What leaves my Mac?</summary>
-          <p>Without an API key, nothing leaves your Mac. Recordings and skills stay in your Library folder, and Cortex only
-            records while the game window is in front. With a key, your assignment text goes to Claude, and in thinking mode
-            screenshots of the game window do too. Your API key is stored in the macOS Keychain.</p>
+          <p>With a Gemini key, Cortex sends your instruction and a small screenshot of the <i>game window only</i> to Google every
+            few seconds while it plays. On the free tier, Google may use that data to improve its products. Without a key,
+            nothing leaves your Mac. Keys are stored in the macOS Keychain.</p>
         </details>
         <details>
           <summary>Why does it need those permissions?</summary>
@@ -455,7 +463,7 @@
         </details>
         <details>
           <summary>Something went wrong. Where can I look?</summary>
-          <p>Choose <b>Show log</b> in the Cortex menu. Then <a href="https://github.com/Joto3D/Cortex/issues">open an issue</a>
+          <p>Choose <b>Settings → Show log</b> in Cortex. Then <a href="https://github.com/Joto3D/Cortex/issues">open an issue</a>
             with what happened and the end of the log.</p>
         </details>
       </div>
@@ -464,7 +472,7 @@
 
   <section class="final" aria-labelledby="final-h">
     <div class="wrap">
-      <h2 id="final-h">Let Cortex do the chores</h2>
+      <h2 id="final-h">Let Cortex play the boring parts</h2>
       <p class="muted">Free for Mac. Takes about a minute to set up.</p>
       <div class="cta">
         <a class="btn primary big js-dl" href="https://github.com/Joto3D/Cortex/releases/latest/download/Cortex.dmg">
@@ -478,9 +486,9 @@
 git clone https://github.com/Joto3D/Cortex && cd Cortex
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[all]"
-python -m cortex.app                        <span class="c"># menu-bar app</span>
-cortex-games add "Minecraft"                <span class="c"># add a game</span>
-cortex --game minecraft -a "gather wood"    <span class="c"># or play from the terminal</span></pre>
+python -m cortex.app                                  <span class="c"># the app</span>
+cortex-games add "My Game"                            <span class="c"># or, from the terminal</span>
+GEMINI_API_KEY=... cortex --game my_game -a "collect wood"</pre>
       </details>
     </div>
   </section>
@@ -519,61 +527,5 @@ cortex --game minecraft -a "gather wood"    <span class="c"># or play from the t
   })();
 </script>
 
-<script type="module">
-  import { interpret } from "./assign.mjs";
-
-  const input = document.getElementById("assignment");
-  const plan = document.getElementById("plan");
-  const cmd = document.getElementById("cmd");
-  let tasks = [];
-
-  const title = (name) => name.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
-  const el = (tag, cls, text) => {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text != null) e.textContent = text;
-    return e;
-  };
-
-  function render() {
-    const text = input.value;
-    cmd.textContent = `cortex -a "${text.replace(/"/g, '\\"')}"`;
-    plan.replaceChildren();
-    if (!text.trim()) {
-      plan.append(el("p", "empty", "With no assignment, Cortex does every chore, highest priority first."));
-      return;
-    }
-    const { steps, unsupported } = interpret(text, tasks);
-    if (steps.length) {
-      const ol = el("ol", "steps");
-      for (const s of steps) {
-        const t = tasks.find((x) => x.name === s.task);
-        const li = el("li");
-        const body = el("div");
-        const head = el("div", "t", title(s.task));
-        head.append(el("span", "badge", s.limit ? `× ${s.limit}` : "until done"));
-        body.append(head, el("div", "d", t.description + (t.tool ? ` Uses the ${t.tool.replace(/_/g, " ")}.` : "")));
-        li.append(body);
-        ol.append(li);
-      }
-      plan.append(ol);
-    } else {
-      plan.append(el("p", "empty", "I didn't find a chore I know how to do in that."));
-    }
-    for (const u of unsupported) plan.append(el("div", "note", `Can't do yet: “${u}”`));
-  }
-
-  document.querySelectorAll(".chip").forEach((b) =>
-    b.addEventListener("click", () => { input.value = b.textContent; render(); input.focus(); })
-  );
-  input.addEventListener("input", render);
-
-  try {
-    tasks = (await (await fetch("tasks.json")).json()).tasks;
-    render();
-  } catch (e) {
-    plan.replaceChildren(el("p", "empty", "Couldn't load the task list. Open this page from a web server, not as a file."));
-  }
-</script>
 </body>
 </html>

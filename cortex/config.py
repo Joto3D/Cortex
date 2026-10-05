@@ -8,6 +8,8 @@ A profile is a YAML file describing one game. ``engine`` picks how it's played:
   (see ``cortex/profiles/generic_3d.yaml``).
 * ``skill``: plays skills you taught it by recording yourself (``cortex/teach``).
   Works for any game, fully offline, no API key. Any profile can also play skills.
+* ``auto`` (what the app creates when you pick a game window): Gemini if you
+  have a free Gemini key, else Claude if you have a Claude key, else your taught skills.
 
 Bundled profiles live in ``cortex/profiles``. Games you add yourself are saved
 to ``~/Library/Application Support/Cortex/games`` (override with CORTEX_HOME)
@@ -24,7 +26,7 @@ import os
 import yaml
 
 PROFILE_DIR = Path(__file__).parent / "profiles"
-ENGINES = ("grid", "agent", "skill")
+ENGINES = ("grid", "agent", "skill", "auto")
 
 
 def cortex_home() -> Path:
@@ -142,7 +144,7 @@ def list_profiles() -> list[str]:
 
 
 def load_profile(name_or_path: str | Path) -> Profile:
-    """Load a profile by name (``"stardew"``) or by file path."""
+    """Load a profile by name (``"my_game"``) or by file path."""
     path = find_profile(name_or_path)
     with open(path) as f:
         raw = yaml.safe_load(f)

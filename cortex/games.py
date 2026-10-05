@@ -1,12 +1,13 @@
-"""Add any game to Cortex: Claude drafts a game profile from the game's name and a screenshot.
+"""Add any game to Cortex.
 
+    python -m cortex.games windows                    # names of open app windows
+    python -m cortex.games add "My Game"              # plays with Gemini (free key) or skills you teach it
+    python -m cortex.games add "My Game" --claude     # Claude drafts controls, tips and reflexes
     python -m cortex.games list
-    python -m cortex.games add "Minecraft"            # picks the window whose app is named Minecraft
-    python -m cortex.games add "Valheim" --window "valheim"
 
-New games use the ``agent`` engine, which works for 2D and 3D games alike. The
-profile is saved to ~/Library/Application Support/Cortex/games/<name>.yaml.
-Open it to fine-tune key bindings, tips, or reflexes.
+In the app you just pick the game's window; that calls ``game_for_window``.
+Profiles are saved to ~/Library/Application Support/Cortex/games/<name>.yaml.
+Open one to add key bindings or tips; Cortex shows them to the AI.
 """
 from __future__ import annotations
 
@@ -180,15 +181,26 @@ def save_profile(game: str, raw: dict, directory: Path | None = None) -> Path:
 
 
 def add_game_offline(game: str, window_owner: str | None = None) -> Path:
-    """Add a game without Claude: Cortex will play it with skills you teach it by showing."""
+    """Add a game with no questions asked. It plays with Gemini (free key) or the skills you teach it."""
     raw = {
-        "engine": "skill",
+        "engine": "auto",
         "game": {"window_owner": window_owner or game, "description": ""},
         "controls": {"kill_switch": "f12", "pause": "f11"},
         "loop": {"pause_when_unfocused": True},
     }
     profile_from_dict(raw, name=slugify(game))
     return save_profile(game, raw)
+
+
+def game_for_window(app_name: str) -> str:
+    """The profile name for an open app window, creating a profile on first use."""
+    for name in list_profiles():
+        try:
+            if load_profile(name).window_owner == app_name:
+                return name
+        except Exception as e:  # a broken user profile shouldn't block picking a game
+            log.warning("skipping profile %s: %s", name, e)
+    return add_game_offline(app_name, app_name).stem
 
 
 def add_game(game: str, window_owner: str | None = None, screenshot: bool = True, client=None, model: str = DEFAULT_MODEL) -> Path:
@@ -212,11 +224,11 @@ def main(argv: list[str] | None = None) -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="list known games")
     sub.add_parser("windows", help="list open app windows (to find a game's window name)")
-    add = sub.add_parser("add", help="add a game (Claude drafts its profile)")
-    add.add_argument("game", help='the game name, e.g. "Minecraft"')
+    add = sub.add_parser("add", help="add a game")
+    add.add_argument("game", help='the game name, e.g. "My Game"')
     add.add_argument("--window", help="app name of the game window, if different from the game name")
     add.add_argument("--no-screenshot", action="store_true")
-    add.add_argument("--offline", action="store_true", help="no Claude: play it with skills you teach it")
+    add.add_argument("--claude", action="store_true", help="let Claude draft controls, tips and reflexes (needs a Claude key)")
     add.add_argument("--model", default=DEFAULT_MODEL)
     show = sub.add_parser("show", help="print a game's profile")
     show.add_argument("game")
@@ -234,9 +246,10 @@ def main(argv: list[str] | None = None) -> None:
 
         print(find_profile(a.game).read_text())
     elif a.cmd == "add":
-        if a.offline:
+        if not a.claude:
             path = add_game_offline(a.game, a.window)
-            print(f"Saved {path}\nTeach it:  python -m cortex.teach record --game {path.stem} \"chop trees\"")
+            print(f"Saved {path}\nPlay it:   GEMINI_API_KEY=... python -m cortex.loop --game {path.stem} -a \"collect wood\""
+                  f"\nTeach it:  python -m cortex.teach record --game {path.stem} \"collect wood\"")
             return
         path = add_game(a.game, a.window, not a.no_screenshot, model=a.model)
         print(f"Saved {path}\nTry it:  python -m cortex.loop --game {path.stem}")
