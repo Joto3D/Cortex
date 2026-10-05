@@ -86,11 +86,13 @@ class CortexApp(rumps.App):
         self._timer.start()
         if not self.ctl.settings.setup_done:
             # First launch: walk through setup once the menu-bar icon is up.
-            rumps.Timer(self._first_run, 1.0).start()
+            # Keep a reference: rumps only holds timers weakly.
+            self._first_run_timer = rumps.Timer(self._first_run, 1.0)
+            self._first_run_timer.start()
 
     # -- menu state -------------------------------------------------------------
     def _rebuild_games(self) -> None:
-        self.game_menu.clear()
+        _clear_submenu(self.game_menu)
         for name in self.ctl.games():
             try:
                 p = load_profile(name)
@@ -111,7 +113,7 @@ class CortexApp(rumps.App):
 
     def _rebuild_assignments(self) -> None:
         m = self.assignment_menu
-        m.clear()
+        _clear_submenu(m)
         m.add(rumps.MenuItem(NEW_ASSIGNMENT, callback=self.on_assignment, key="n"))
         current = self.ctl.settings.assignment
         recent = self.ctl.settings.recent
@@ -153,6 +155,10 @@ class CortexApp(rumps.App):
         self.stop_item.set_callback(self.on_stop if running else None)
 
     def _tick(self, _) -> None:
+        if getattr(self, "_pending_rebuild", False):  # set by background work; menus are rebuilt on the main thread
+            self._pending_rebuild = False
+            self._rebuild_games()
+            self._rebuild_assignments()
         self._refresh()
         while not self._notes.empty():
             title, msg = self._notes.get_nowait()
@@ -261,7 +267,7 @@ class CortexApp(rumps.App):
             except Exception as e:
                 self.ctl.status = f"Couldn't add {name}: {e}"
                 self._notes.put(("Couldn't add game", str(e)))
-            rumps.Timer(lambda t: (t.stop(), self._rebuild_games(), self._rebuild_assignments()), 0.1).start()
+            self._pending_rebuild = True
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -302,6 +308,13 @@ class CortexApp(rumps.App):
         rumps.alert("You're all set", "1. Pick a game in Game ▸ (or Add a game…)\n2. Pick an assignment\n3. Press Start (⌘S) and switch to the game\n\nF12 stops Cortex at any time; F11 pauses.")
 
 
+def _clear_submenu(item) -> None:
+    """Empty a submenu. rumps only creates the underlying NSMenu when the first child is added,
+    and MenuItem.clear() crashes on an item that has never had children."""
+    if getattr(item, "_menu", None) is not None:
+        item.clear()
+
+
 def _short(text: str, n: int) -> str:
     text = " ".join(text.split())
     return text if len(text) <= n else text[: n - 1] + "…"
@@ -320,7 +333,20 @@ def selftest() -> None:
     print("Cortex selftest OK")
 
 
+def _report_startup_crash(exc: BaseException) -> None:
+    """Make a startup failure visible: log it, and show a dialog if AppKit is usable."""
+    import traceback
+
+    text = "".join(traceback.format_exception(exc))
+    log.critical("Cortex failed to start:\n%s", text)
+    try:
+        rumps.alert("Cortex couldn't start", f"{type(exc).__name__}: {exc}\n\nDetails are in {log_path()}")
+    except Exception:
+        pass
+
+
 def main() -> None:
+    import faulthandler
     import sys
 
     if "--selftest" in sys.argv:
@@ -328,7 +354,17 @@ def main() -> None:
         selftest()
         return
     setup_logging()
-    CortexApp().run()
+    log.info("Cortex %s starting (python %s, %s)", cortex.__version__, sys.version.split()[0], sys.executable)
+    # Native crashes (segfaults in AppKit/PyObjC) bypass Python exceptions; write their stack to the log too.
+    crash_file = open(log_path().with_name("crash.log"), "a")
+    faulthandler.enable(crash_file)
+    try:
+        app = CortexApp()
+        log.info("menu ready; entering run loop")
+        app.run()
+    except Exception as e:
+        _report_startup_crash(e)
+        raise
 
 
 if __name__ == "__main__":
