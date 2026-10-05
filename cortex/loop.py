@@ -65,7 +65,7 @@ def build_encoder(profile: Profile):
     from cortex.perception.clip_model import ClipEncoder
 
     p = profile.perception
-    fb = (p["fallback_model"], p["fallback_pretrained"]) if "fallback_model" in p else None
+    fb = (p.get("fallback_model", "ViT-B-32"), p.get("fallback_pretrained", "laion2b_s34b_b79k"))
     return ClipEncoder(p.get("model", "MobileCLIP-S1"), p.get("pretrained", "datacompdr"), fallback=fb)
 
 
@@ -203,6 +203,45 @@ def run_agent(
             reflex_thread.stop()
 
 
+def run_skill(
+    profile: Profile,
+    assignment: str,
+    dry_run: bool = False,
+    stop: threading.Event | None = None,
+    paused: threading.Event | None = None,
+    on_status=lambda s: None,
+):
+    """Play a skill you taught by showing (any game, offline). Returns a PlayResult."""
+    from cortex.capture.screen import WindowCapture
+    from cortex.control.input_mac import MacInput, frontmost_app_name
+    from cortex.teach import choose_skill, list_skills, play_skill
+
+    skills = list_skills(profile.name)
+    if not skills:
+        raise RuntimeError(
+            f"Cortex hasn't learned anything for {profile.window_owner or profile.name} yet. "
+            "Use Teach ▸ Record new skill… and play for a few minutes."
+        )
+    encoder = build_encoder(profile)
+    skill = choose_skill(assignment, skills, encoder)
+    cap = WindowCapture(profile.window_owner)
+    backend = _NullInput() if dry_run else MacInput()
+    keys = Hotkeys(profile.controls.kill_switch, profile.controls.pause, stop, paused)
+
+    def to_screen(fx: float, fy: float) -> tuple[float, float]:
+        w = cap.window
+        return w.x + fx * w.width, w.y + fy * w.height
+
+    def is_paused() -> bool:
+        return keys.paused.is_set() or (
+            profile.pause_when_unfocused and frontmost_app_name() not in (None, profile.window_owner)
+        )
+
+    log.info("playing skill %r (%.0fs recorded) in %s", skill.name, skill.seconds, profile.name)
+    return play_skill(skill, cap.grab, encoder, backend, to_screen,
+                      should_stop=keys.stop.is_set, is_paused=is_paused, on_status=on_status)
+
+
 class _NullInput:
     def key(self, name, down):
         log.debug("key %s %s", name, "down" if down else "up")
@@ -231,6 +270,11 @@ def main(argv: list[str] | None = None) -> None:
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     profile = load_profile(a.profile)
+
+    if profile.engine == "skill":
+        result = run_skill(profile, a.assignment or "", dry_run=a.dry_run, on_status=lambda s: log.info("%s", s))
+        print(result.summary)
+        return
 
     if profile.engine == "agent":
         goal = a.assignment

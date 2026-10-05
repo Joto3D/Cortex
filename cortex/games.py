@@ -179,6 +179,18 @@ def save_profile(game: str, raw: dict, directory: Path | None = None) -> Path:
     return path
 
 
+def add_game_offline(game: str, window_owner: str | None = None) -> Path:
+    """Add a game without Claude: Cortex will play it with skills you teach it by showing."""
+    raw = {
+        "engine": "skill",
+        "game": {"window_owner": window_owner or game, "description": ""},
+        "controls": {"kill_switch": "f12", "pause": "f11"},
+        "loop": {"pause_when_unfocused": True},
+    }
+    profile_from_dict(raw, name=slugify(game))
+    return save_profile(game, raw)
+
+
 def add_game(game: str, window_owner: str | None = None, screenshot: bool = True, client=None, model: str = DEFAULT_MODEL) -> Path:
     """Draft and save a profile for ``game``. Returns the saved file path."""
     owner = window_owner or game
@@ -204,6 +216,7 @@ def main(argv: list[str] | None = None) -> None:
     add.add_argument("game", help='the game name, e.g. "Minecraft"')
     add.add_argument("--window", help="app name of the game window, if different from the game name")
     add.add_argument("--no-screenshot", action="store_true")
+    add.add_argument("--offline", action="store_true", help="no Claude: play it with skills you teach it")
     add.add_argument("--model", default=DEFAULT_MODEL)
     show = sub.add_parser("show", help="print a game's profile")
     show.add_argument("game")
@@ -221,6 +234,10 @@ def main(argv: list[str] | None = None) -> None:
 
         print(find_profile(a.game).read_text())
     elif a.cmd == "add":
+        if a.offline:
+            path = add_game_offline(a.game, a.window)
+            print(f"Saved {path}\nTeach it:  python -m cortex.teach record --game {path.stem} \"chop trees\"")
+            return
         path = add_game(a.game, a.window, not a.no_screenshot, model=a.model)
         print(f"Saved {path}\nTry it:  python -m cortex.loop --game {path.stem}")
         examples = load_profile(path).agent.get("example_assignments") or []

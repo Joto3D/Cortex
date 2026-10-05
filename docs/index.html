@@ -291,9 +291,14 @@
       <p class="muted">Cortex picks the right way to play for each game, so there's nothing to configure.</p>
       <div class="grid3">
         <div class="card feature">
+          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-pulse"/></svg></span>Teach it any game, no key</h3>
+          <p>Press <b>Record</b>, play for a few minutes, then press <kbd>F12</kbd>. Cortex repeats what you showed it, in any
+            game, entirely on your Mac. No API key and no extra downloads.</p>
+        </div>
+        <div class="card feature">
           <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-chat"/></svg></span>Plain-English assignments</h3>
-          <p>Type what you want done, like <q>break 5 rocks, then water</q>. Claude turns it into exact steps and tells you if
-            something isn't possible.</p>
+          <p>Type what you want done, like <q>break 5 rocks, then water</q> or the name of a skill you taught. Cortex turns it
+            into steps and tells you if something isn't possible.</p>
         </div>
         <div class="card feature">
           <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-bolt"/></svg></span>Fast mode for 2D games</h3>
@@ -301,18 +306,14 @@
             waters and harvests at human speed.</p>
         </div>
         <div class="card feature">
-          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-eye"/></svg></span>Thinking mode for 3D</h3>
-          <p>For any other game, Claude looks at the screen and plays: it walks, turns the camera and clicks, and keeps notes on its
-            progress. It takes a few seconds per decision.</p>
+          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-eye"/></svg></span>Optional: thinking mode</h3>
+          <p>With a Claude API key, Claude can look at the screen and play games it has never seen, working out new situations
+            by itself. It takes a few seconds per decision.</p>
         </div>
         <div class="card feature">
           <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-plus"/></svg></span>Add a game in one click</h3>
-          <p>Open any game and choose <b>Add a game…</b>. Claude looks at it and writes down its controls, tips and dangers to
-            watch for. You can edit all of it.</p>
-        </div>
-        <div class="card feature">
-          <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-pulse"/></svg></span>Instant reflexes</h3>
-          <p>While Claude thinks, local reflexes watch for things like a nearly empty health bar and react within milliseconds.</p>
+          <p>Open any game and choose <b>Add a game…</b>, then teach it. With an API key, Claude also writes down the game's
+            controls, tips and dangers to watch for.</p>
         </div>
         <div class="card feature">
           <h3><span class="ficon"><svg aria-hidden="true"><use href="#i-shield"/></svg></span>You stay in control</h3>
@@ -363,9 +364,9 @@
             <li>Download size <b class="js-size">about 240 MB</b></li>
             <li>Released <b class="js-date">Oct 4, 2026</b></li>
           </ul>
-          <p class="muted" style="margin:12px 0 0;font-size:.92rem">Free and open source. You'll need a
-            <a href="https://console.anthropic.com/">Claude API key</a> for assignments in your own words and for thinking mode.
-            Stardew's fast mode works without one.</p>
+          <p class="muted" style="margin:12px 0 0;font-size:.92rem">Free and open source. <b>No API key needed</b>:
+            Stardew's fast mode and teaching by showing run entirely on your Mac. A
+            <a href="https://console.anthropic.com/">Claude API key</a> is optional and adds thinking mode and looser phrasing of assignments.</p>
           <div class="sha js-sha" hidden></div>
         </div>
         <div style="display:grid;gap:10px;justify-items:start">
@@ -391,7 +392,7 @@
         <div class="card step">
           <div class="n">3</div>
           <h3>Follow the setup</h3>
-          <p>A 🌱 appears in the menu bar and setup starts. Allow Screen Recording, Accessibility and Input Monitoring, then paste your API key.</p>
+          <p>A 🌱 appears in the menu bar and setup starts. Allow Screen Recording, Accessibility and Input Monitoring. An API key is optional.</p>
         </div>
         <div class="card step">
           <div class="n">4</div>
@@ -427,8 +428,9 @@
       <div class="faq">
         <details>
           <summary>Which games does it work with?</summary>
-          <p>Any game that runs in a window on your Mac. Top-down 2D tile games like Stardew Valley get the fast mode, and Stardew
-            is built in. For everything else, add the game from the menu and Cortex uses thinking mode, which also works for 3D games.</p>
+          <p>Any game that runs in a window on your Mac. Stardew Valley is built in with a fast mode. For any other game, add it
+            from the menu and <b>teach it by showing</b>: record yourself playing and Cortex repeats it, with no API key. With a
+            Claude API key you can also use thinking mode, which works out new situations on its own.</p>
         </details>
         <details>
           <summary>How much does the Claude API cost?</summary>
@@ -437,8 +439,9 @@
         </details>
         <details>
           <summary>What leaves my Mac?</summary>
-          <p>Your assignment text goes to Claude. In thinking mode, screenshots of the game window go to Claude too. Fast mode only
-            sends the assignment, and everything else stays on your Mac. Your API key is stored in the macOS Keychain.</p>
+          <p>Without an API key, nothing leaves your Mac. Recordings and skills stay in your Library folder, and Cortex only
+            records while the game window is in front. With a key, your assignment text goes to Claude, and in thinking mode
+            screenshots of the game window do too. Your API key is stored in the macOS Keychain.</p>
         </details>
         <details>
           <summary>Why does it need those permissions?</summary>
