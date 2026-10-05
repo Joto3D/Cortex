@@ -320,7 +320,20 @@ def selftest() -> None:
     print("Cortex selftest OK")
 
 
+def _report_startup_crash(exc: BaseException) -> None:
+    """Make a startup failure visible: log it, and show a dialog if AppKit is usable."""
+    import traceback
+
+    text = "".join(traceback.format_exception(exc))
+    log.critical("Cortex failed to start:\n%s", text)
+    try:
+        rumps.alert("Cortex couldn't start", f"{type(exc).__name__}: {exc}\n\nDetails are in {log_path()}")
+    except Exception:
+        pass
+
+
 def main() -> None:
+    import faulthandler
     import sys
 
     if "--selftest" in sys.argv:
@@ -328,7 +341,17 @@ def main() -> None:
         selftest()
         return
     setup_logging()
-    CortexApp().run()
+    log.info("Cortex %s starting (python %s, %s)", cortex.__version__, sys.version.split()[0], sys.executable)
+    # Native crashes (segfaults in AppKit/PyObjC) bypass Python exceptions; write their stack to the log too.
+    crash_file = open(log_path().with_name("crash.log"), "a")
+    faulthandler.enable(crash_file)
+    try:
+        app = CortexApp()
+        log.info("menu ready; entering run loop")
+        app.run()
+    except Exception as e:
+        _report_startup_crash(e)
+        raise
 
 
 if __name__ == "__main__":

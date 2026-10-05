@@ -67,6 +67,23 @@ jobs:
       - name: Self-test the built app
         run: dist/Cortex.app/Contents/MacOS/Cortex --selftest
 
+      - name: Launch the real menu-bar app for 20 seconds
+        run: |
+          export CORTEX_HOME=$RUNNER_TEMP/cortex-home
+          dist/Cortex.app/Contents/MacOS/Cortex > $RUNNER_TEMP/launch.out 2>&1 &
+          PID=$!
+          sleep 20
+          echo "--- stdout/stderr ---"; cat $RUNNER_TEMP/launch.out || true
+          echo "--- cortex.log ---"; cat $CORTEX_HOME/cortex.log 2>/dev/null || true
+          echo "--- crash.log ---"; cat $CORTEX_HOME/crash.log 2>/dev/null || true
+          if kill -0 $PID 2>/dev/null; then
+            echo "Cortex is still running after 20s"
+            kill $PID
+          else
+            wait $PID; echo "::error::Cortex exited during startup (code $?)"; exit 1
+          fi
+          grep -q "entering run loop" $CORTEX_HOME/cortex.log || { echo "::error::Cortex never reached its run loop"; exit 1; }
+
       - name: Make Cortex.dmg
         run: |
           mkdir -p dmg && cp -R dist/Cortex.app dmg/ && ln -s /Applications dmg/Applications
