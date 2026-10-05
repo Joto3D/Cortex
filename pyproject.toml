@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cortex"
-version = "0.2.0"
-description = "A vision bot that plays single-player farming sims using a contrastive (CLIP) vision-language model."
+version = "0.3.0"
+description = "A Mac app that plays single-player games for you: free Gemini AI plus fast local vision (CLIP) and teach-by-showing."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
@@ -25,7 +25,7 @@ mac = [
     "pynput>=1.7",
 ]
 debug = ["opencv-python>=4.8"]
-app = ["cortex[clip,ai,mac]", "rumps>=0.4", "keyring>=24"]
+app = ["cortex[clip,ai,mac]", "pywebview>=5.4", "pyobjc-framework-WebKit>=10.0", "keyring>=24", "certifi"]
 build = ["cortex[app]", "pyinstaller>=6.6"]
 dev = ["pytest>=8.0"]
 all = ["cortex[clip,ai,mac,app,debug,dev]"]

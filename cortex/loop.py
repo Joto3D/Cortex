@@ -1,8 +1,11 @@
 """Main loop: capture → perceive → plan → act, at a fixed rate.
 
-    python -m cortex.loop                                  # asks what you want done
-    python -m cortex.loop -a "harvest, then water the crops" --debug
-    python -m cortex.loop --dry-run                        # perceive and plan, but send no input
+    python -m cortex.loop --game my_game                          # asks what you want done
+    python -m cortex.loop --game my_game -a "collect wood" -y
+    python -m cortex.loop --game my_game --dry-run                # think, but send no input
+
+Games with ``engine: auto`` use Gemini when GEMINI_API_KEY is set (free key from
+aistudio.google.com), otherwise the skills you taught by showing.
 
 F12 stops the bot and F11 toggles pause (both configurable in the profile).
 """
@@ -220,7 +223,7 @@ def run_skill(
     if not skills:
         raise RuntimeError(
             f"Cortex hasn't learned anything for {profile.window_owner or profile.name} yet. "
-            "Use Teach ▸ Record new skill… and play for a few minutes."
+            "Add a free Gemini key in Settings, or teach it: open the Teach tab, press Record and play for a few minutes."
         )
     encoder = build_encoder(profile)
     skill = choose_skill(assignment, skills, encoder)
@@ -240,6 +243,70 @@ def run_skill(
     log.info("playing skill %r (%.0fs recorded) in %s", skill.name, skill.seconds, profile.name)
     return play_skill(skill, cap.grab, encoder, backend, to_screen,
                       should_stop=keys.stop.is_set, is_paused=is_paused, on_status=on_status)
+
+
+def run_gemini(
+    profile: Profile,
+    goal: str,
+    api_key: str | None = None,
+    model: str | None = None,
+    rpm: float = 12.0,
+    dry_run: bool = False,
+    stop: threading.Event | None = None,
+    paused: threading.Event | None = None,
+    on_status=lambda s: None,
+):
+    """Play any game with Gemini (free key). Taught skills become fast local actions it can call."""
+    import os
+
+    from cortex.agent import ActionExecutor
+    from cortex.agent.gemini import FAST_MODEL, GeminiClient, GeminiPilot
+    from cortex.capture.screen import WindowCapture
+    from cortex.control.input_mac import MacInput, frontmost_app_name
+    from cortex.teach import choose_skill, list_skills, play_skill
+
+    client = GeminiClient(api_key or os.environ.get("GEMINI_API_KEY", ""), model or FAST_MODEL)
+    cap = WindowCapture(profile.window_owner)
+    backend = _NullInput() if dry_run else MacInput()
+    keys = Hotkeys(profile.controls.kill_switch, profile.controls.pause, stop, paused)
+    cfg = profile.agent
+
+    def to_screen(fx: float, fy: float) -> tuple[float, float]:
+        w = cap.window
+        return w.x + fx * w.width, w.y + fy * w.height
+
+    def is_paused() -> bool:
+        return keys.paused.is_set() or (
+            profile.pause_when_unfocused and frontmost_app_name() not in (None, profile.window_owner)
+        )
+
+    executor = ActionExecutor(
+        backend, {k.lower(): str(v).lower() for k, v in (cfg.get("keys") or {}).items()},
+        to_screen, float(cfg.get("look_px_per_degree", 6.0)),
+    )
+
+    skills = list_skills(profile.name)
+    encoder_box: list = []
+
+    def run_taught(name: str, seconds: float, should_stop) -> str:
+        if not encoder_box:
+            encoder_box.append(build_encoder(profile))
+        skill = choose_skill(name, skills, encoder_box[0])
+        res = play_skill(skill, cap.grab, encoder_box[0], backend, to_screen, should_stop=should_stop,
+                         is_paused=is_paused, max_minutes=seconds / 60, lost_after_s=min(2.0, seconds))
+        return f"played “{skill.name}” for {res.seconds:.0f}s ({res.reason})"
+
+    if skills:  # load CLIP in the background so the first use_skill starts instantly
+        threading.Thread(target=lambda: encoder_box or encoder_box.append(build_encoder(profile)), daemon=True).start()
+
+    pilot = GeminiPilot(
+        profile, goal, cap.grab, executor, client, rpm=rpm,
+        skills=[s.name for s in skills], play_skill=run_taught if skills else None,
+        should_stop=keys.stop.is_set, is_paused=is_paused, on_status=on_status,
+    )
+    log.info("playing %s with Gemini (%s); %s to stop, %s to pause", profile.name, client.model,
+             profile.controls.kill_switch, profile.controls.pause)
+    return pilot.run()
 
 
 class _NullInput:
@@ -262,7 +329,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--offline", action="store_true", help="understand the assignment with keywords only (no Claude)")
     ap.add_argument("--model", default=DEFAULT_MODEL, help="Claude model used to understand the assignment")
     ap.add_argument("-y", "--yes", action="store_true", help="start without confirming the plan")
-    ap.add_argument("--profile", "--game", default="stardew", help="game profile name (see `python -m cortex.games list`) or a YAML path")
+    ap.add_argument("--profile", "--game", required=True, help="game profile name (see `python -m cortex.games list`) or a YAML path")
+    ap.add_argument("--brain", choices=("gemini", "claude", "skills"), help="override how an auto/agent game is played")
     ap.add_argument("--debug", action="store_true", help="show the perception overlay window")
     ap.add_argument("--dry-run", action="store_true", help="don't send any input")
     ap.add_argument("--record", type=Path, help="save every 10th frame here (for prompt tuning and tests)")
@@ -271,12 +339,30 @@ def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     profile = load_profile(a.profile)
 
+    if profile.engine in ("auto", "agent"):
+        import os
+
+        brain = a.brain or ("gemini" if os.environ.get("GEMINI_API_KEY") else
+                            "claude" if os.environ.get("ANTHROPIC_API_KEY") and profile.engine == "agent" else "skills")
+        if brain == "gemini":
+            goal = a.assignment if a.assignment is not None else (input("What should I do? > ") if sys.stdin.isatty() else "")
+            if not a.yes and sys.stdin.isatty():
+                input("Press Enter, then switch to the game window within 3 seconds...")
+                time.sleep(3)
+            result = run_gemini(profile, goal, dry_run=a.dry_run, on_status=lambda s: log.info("%s", s))
+            print(f"{'Done' if result.success else 'Stopped'}: {result.summary}")
+            return
+        if brain == "skills":
+            result = run_skill(profile, a.assignment or "", dry_run=a.dry_run, on_status=lambda s: log.info("%s", s))
+            print(result.summary)
+            return
+
     if profile.engine == "skill":
         result = run_skill(profile, a.assignment or "", dry_run=a.dry_run, on_status=lambda s: log.info("%s", s))
         print(result.summary)
         return
 
-    if profile.engine == "agent":
+    if profile.engine in ("agent", "auto"):
         goal = a.assignment
         if goal is None and sys.stdin.isatty():
             goal = input(f"What should I do in {profile.window_owner or profile.name}? > ")

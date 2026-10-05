@@ -10,8 +10,8 @@ import cortex
 
 HERE = SPECPATH  # noqa: F821 (provided by PyInstaller)
 
-datas = collect_data_files("cortex") + collect_data_files("open_clip")
-for dist in ("torch", "open_clip_torch", "anthropic", "huggingface_hub", "safetensors", "tqdm", "regex", "timm", "keyring"):
+datas = collect_data_files("cortex") + collect_data_files("open_clip") + collect_data_files("webview") + collect_data_files("certifi")
+for dist in ("torch", "open_clip_torch", "anthropic", "huggingface_hub", "safetensors", "tqdm", "regex", "timm", "keyring", "pywebview"):
     try:
         datas += copy_metadata(dist)
     except Exception:
@@ -24,7 +24,8 @@ binaries = collect_dynamic_libs("torchvision", search_patterns=["*.so", "*.dylib
 hiddenimports = (
     collect_submodules("cortex")
     + collect_submodules("keyring.backends")
-    + ["pynput.keyboard._darwin", "pynput.mouse._darwin", "rumps", "ApplicationServices"]
+    + ["pynput.keyboard._darwin", "pynput.mouse._darwin", "ApplicationServices", "certifi",
+       "webview", "webview.platforms.cocoa", "WebKit", "PyObjCTools.AppHelper"]
 )
 
 a = Analysis(
@@ -58,7 +59,6 @@ app = BUNDLE(
     info_plist={
         "CFBundleDisplayName": "Cortex",
         "CFBundleShortVersionString": cortex.__version__,
-        "LSUIElement": True,  # menu-bar app: no Dock icon
         "LSMinimumSystemVersion": "13.0",
         "NSHighResolutionCapable": True,
         "NSHumanReadableCopyright": "MIT License",

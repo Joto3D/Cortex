@@ -1,9 +1,9 @@
 """Teach Cortex from the terminal.
 
-    python -m cortex.teach record --game minecraft "chop trees"   # play; Ctrl+C (or --seconds) to finish
-    python -m cortex.teach list --game minecraft
-    python -m cortex.teach play --game minecraft "cut some wood"
-    python -m cortex.teach delete --game minecraft "chop trees"
+    python -m cortex.teach record --game my_game "collect wood"   # play; Ctrl+C (or --seconds) to finish
+    python -m cortex.teach list --game my_game
+    python -m cortex.teach play --game my_game "get some wood"
+    python -m cortex.teach delete --game my_game "collect wood"
 """
 from __future__ import annotations
 

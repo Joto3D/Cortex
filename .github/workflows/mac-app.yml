@@ -67,7 +67,7 @@ jobs:
       - name: Self-test the built app
         run: dist/Cortex.app/Contents/MacOS/Cortex --selftest
 
-      - name: Launch the real menu-bar app for 20 seconds
+      - name: Launch the real app for 20 seconds
         run: |
           export CORTEX_HOME=$RUNNER_TEMP/cortex-home
           dist/Cortex.app/Contents/MacOS/Cortex > $RUNNER_TEMP/launch.out 2>&1 &

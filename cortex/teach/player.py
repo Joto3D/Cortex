@@ -10,6 +10,7 @@ from typing import Callable
 import numpy as np
 
 from cortex.control.input_mac import KEYCODES
+from cortex.telemetry import LIVE
 
 from .skill import FPS, NearestMomentPolicy, Skill, Tick, shrink
 
@@ -94,8 +95,12 @@ def play_skill(
                 sleep(0.2)
                 continue
 
-            emb = encoder.encode_images(shrink(grab(), width)[None])[0]
+            t_see = clock()
+            frame = grab()
+            LIVE.frame(frame)
+            emb = encoder.encode_images(shrink(frame, width)[None])[0]
             i, sim = policy.choose(emb)
+            LIVE.reaction_ms = 1000 * (clock() - t_see)  # screen -> decision, before the first key goes down
             if sim < min_similarity:
                 player.release_all()
                 lost_since = lost_since or now
@@ -110,6 +115,7 @@ def play_skill(
                 sleep(period)
                 continue
             lost_since = None
+            LIVE.action(f"“{skill.name}” moment {i} (match {sim:.2f})")
 
             for tick in policy.actions(i):
                 if should_stop() or is_paused():
